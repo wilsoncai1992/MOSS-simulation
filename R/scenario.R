@@ -3,13 +3,15 @@ library(MOSS)
 simulate_data <- function(n_sim = 2e2) {
   library(simcausal)
   D <- DAG.empty()
-  
+
   D <- D +
     node("W1", distr = "rbinom", size = 1, prob = .5) +
     node("W", distr = "runif", min = 0, max = 1.5) +
     node("A", distr = "rbinom", size = 1, prob = .15 + .5*as.numeric(W > .75)) +
     node("Trexp", distr = "rexp", rate = 1 + .7*(W)^2 - .8*A) +
     node("Cweib", distr = "rweibull", shape = 1 - .5*W, scale = 75) +
+    # node("T", distr = "rconst", const = round(Trexp*10,0)) + #wrong
+    # node("C", distr = "rconst", const = round(Cweib*10, 0)) + #wrong
     node("T", distr = "rconst", const = round(Trexp*20,0)) +
     node("C", distr = "rconst", const = round(Cweib*20, 0)) +
     # Observed random variable (follow-up time):
@@ -21,7 +23,7 @@ simulate_data <- function(n_sim = 2e2) {
   # only grab ID, W's, A, T.tilde, Delta
   Wname <- grep('W', colnames(dat), value = TRUE)
   dat <- dat[,c('ID', Wname, 'A', "T.tilde", "Delta")]
-  
+
   # input: scalar q, W vector. computes for all W, the S(q|A,W)
   true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {1 - pexp(q, rate = 1 + .7*w^2 - .8*A)})
   # input: vector q. mean(S(q|A,W)|A), average out W. loop over q
@@ -32,32 +34,16 @@ simulate_data <- function(n_sim = 2e2) {
     return(survout)
   }
   truth_surv <- function(q) true_surv(q_grid = q, surv_fn = true_surv_one, A = 1)
-  # truesurvExp <- true_surv(q_grid = q_grid, foo = true_surv_one, A = 1)
-  
   return(list(dat = dat, true_surv = truth_surv))
 }
 
-simulated <- simulate_data(n_sim = 2e2)
-df <- simulated$dat
-true_surv <- simulated$true_surv
-
-# KM
-library(survival)
-n.data <- nrow(df)
-km.fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
-# MOSS
-library(MOSS)
-MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
-MOSS_fit$onestep_curve()
-MOSS_fit$Psi.hat
-# survtmle
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   library(survtmle)
   dat$T.tilde[dat$T.tilde <= 0] <- 1
   t_0 = max(dat$T.tilde)
-  fit <- survtmle(ftime = dat$T.tilde, 
+  fit <- survtmle(ftime = dat$T.tilde,
                   ftype = dat$Delta,
-                  trt = dat$A, 
+                  trt = dat$A,
                   adjustVars = data.frame(dat[,Wname]),
                   # t0 = max(dat$T.tilde),
                   SL.trt = c('SL.glm', 'SL.gam'),
@@ -66,7 +52,7 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
                   method = "hazard",
                   returnIC = TRUE,
                   verbose = FALSE
-                  )
+  )
   # extract cumulative incidence at each timepoint
   tpfit <- timepoints(fit, times = seq_len(t_0))
   len_groups <- as.numeric(unique(lapply(lapply(tpfit, FUN = `[[`,
@@ -83,12 +69,75 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   s_1 <- 1 - as.numeric(est_only[2,])
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
-survtmle_out <- fit_survtmle(dat = df)
-s_0 <- survtmle_out$s_0
-s_1 <- survtmle_out$s_1
-t_survtmle <- survtmle_out$time
+do_once <- function(n_sim = 2e2) {
+  simulated <- simulate_data(n_sim = n_sim)
+  df <- simulated$dat
+  true_surv <- simulated$true_surv
 
+  # KM
+  library(survival)
+  n.data <- nrow(df)
+  km.fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
+  # MOSS
+  library(MOSS)
+  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
+  MOSS_fit$onestep_curve()
+  MOSS_fit$Psi.hat
+  # survtmle
+  survtmle_out <- fit_survtmle(dat = df)
+  s_0 <- survtmle_out$s_0
+  s_1 <- survtmle_out$s_1
+  t_survtmle <- survtmle_out$time
 
+  # compute error
+  error_SL <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'SL')
+  error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
+  error_KM <- survError$new(true_surv = true_surv, object = km.fit)
+  error_survtmle <- survError$new(true_surv = true_surv, object = survtmle_out)
+  return(list(error_SL = error_SL,
+              error_onestep = error_onestep,
+              error_KM = error_KM,
+              error_survtmle = error_survtmle))
+}
+
+# repeat 100 times
+N_SIMULATION = 8
+library(foreach)
+# library(Rmpi)
+# library(doMPI)
+# cl = startMPIcluster()
+# registerDoMPI(cl)
+# clusterSize(cl) # just to check
+
+library(doSNOW)
+library(tcltk)
+nw <- parallel:::detectCores()  # number of workers
+cl <- makeSOCKcluster(nw)
+registerDoSNOW(cl)
+
+all_CI <- foreach(it2 = 1:(N_SIMULATION),
+                  .combine = c,
+                  .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
+                  .inorder = FALSE,
+                  .errorhandling = 'pass',
+                  .verbose = T) %dopar% {
+                    if(it2%%10 == 0) print(it2)
+                    source('./survError.R')
+                    do_once(n_sim = 2e2)
+                  }
+# shut down for memory
+closeCluster(cl)
+head(all_CI)
+
+error_SL_list <- all_CI[names(all_CI) == 'error_SL']
+error_onestep_list <- all_CI[names(all_CI) == 'error_onestep']
+error_KM_list <- all_CI[names(all_CI) == 'error_KM']
+error_survtmle_list <- all_CI[names(all_CI) == 'error_survtmle']
+
+error_SL <- survError_list$new(list_of_survError = error_SL_list)$compute()
+error_onestep <- survError_list$new(list_of_survError = error_onestep_list)$compute()
+error_KM <- survError_list$new(list_of_survError = error_KM_list)$compute()
+error_survtmle <- survError_list$new(list_of_survError = error_survtmle_list)$compute()
 # ================
 # onestep_all_t_fit <- onestep_all_t$survival_df
 # sfun_onestep_all_t  <- stepfun(onestep_all_t_fit$T.uniq, c(1, onestep_all_t_fit$s_vec) , f = 1, right = TRUE)

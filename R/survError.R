@@ -22,8 +22,9 @@ survError <- R6Class("survError",
         self$surv_fit  <- stepfun(object$time, c(1, object$s_1) , f = 1, right = TRUE)
       }
       if ('MOSS' %in% class(object)) {
-        # onestep output
+        # SL output
         if (mode == 'SL') self$surv_fit  <- stepfun(1:object$T.max, c(1, colMeans(object$Qn.A1.t_full)), f = 1, right = TRUE)
+        # onestep output
         if (mode == 'onestep') self$surv_fit  <- stepfun(1:object$T.max, c(1, object$Psi.hat), f = 1, right = TRUE)
       }
     },
@@ -40,13 +41,32 @@ survError <- R6Class("survError",
     }
     )
 )
+# combine a list of survError: into bias, var, mse.
+survError_list <- R6Class("survError_list",
+  public = list(
+    list_of_survError = NULL,
+    # T_range = NULL,
+    initialize = function(list_of_survError) {
+      self$list_of_survError <- list_of_survError
+      return(self)
+    },
+    compute = function(){
+      bias_all <- colMeans(do.call(rbind, lapply(self$list_of_survError, function(x) x$calc_errors()$bias)))
+      mse_all <- colMeans(do.call(rbind, lapply(self$list_of_survError, function(x) x$calc_errors()$mse)))
+      variance_all <- mse_all - bias_all^2
+      return(list(bias = bias_all, mse = mse_all, variance = variance_all))
+    }
+    )
+)
 
-error_SL <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'SL')
-error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
-error_KM <- survError$new(true_surv = true_surv, object = km.fit)
-error_survtmle <- survError$new(true_surv = true_surv, object = survtmle_out)
-
-error_survtmle$display()
-yi <- error_survtmle$calc_errors()
-
-# survError$new(p_density)
+# error_SL <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'SL')
+# error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
+# error_KM <- survError$new(true_surv = true_surv, object = km.fit)
+# error_survtmle <- survError$new(true_surv = true_surv, object = survtmle_out)
+# 
+# error_survtmle$display()
+# yi <- error_survtmle$calc_errors()
+# 
+# la <- list(error_survtmle, error_survtmle)
+# error_combined <- survError_list$new(list_of_survError = la)$compute()
+# error_combined
