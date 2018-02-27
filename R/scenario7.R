@@ -6,12 +6,17 @@ simulate_data <- function(n_sim = 2e2) {
   D <- DAG.empty()
   D <- D +
     node("W1", distr = "rbinom", size = 1, prob = .5) +
-    node("W", distr = "runif", min = 0, max = 1.5) +
-    node("A", distr = "rbinom", size = 1, prob = .15 + .5*as.numeric(W > .75)) +
-    node("Trexp", distr = "rexp", rate = 1 + .7*(W)^2 - .8*A) +
-    node("Cweib", distr = "rweibull", shape = 1 - .5*W, scale = 75) +
-    node("T", distr = "rconst", const = round(Trexp*20,0)) +
-    node("C", distr = "rconst", const = round(Cweib*20, 0)) +
+    # node("W2", distr = "rbinom", size = 1, prob = .5) +
+    # node("W3", distr = "rbinom", size = 1, prob = .5) +
+    # node("W4", distr = "rbinom", size = 1, prob = .5) +
+    # node("W5", distr = "rbinom", size = 1, prob = .5) +
+    node("W", distr = "runif", min = 0, max = 2) +
+    node("A", distr = "rbinom", size = 1, prob = .25 + .6*as.numeric(W > .75)) +
+    node("Trexp", distr = "rlnorm", meanlog = 2 - 1*W + 1*A, sdlog = .01) +
+    # node("Cweib", distr = "rweibull", shape = 1 - .5*W, scale = 75) +
+    node("Cweib", distr = "rconst", const = 200) +
+    node("T", distr = "rconst", const = ceiling(Trexp*1)) +
+    node("C", distr = "rconst", const = ceiling(Cweib*1)) +
     # Observed random variable (follow-up time):
     node("T.tilde", distr = "rconst", const = ifelse(T <= C , T, C)) +
     # Observed random variable (censoring indicator, 1 - failure event, 0 - censored):
@@ -23,16 +28,18 @@ simulate_data <- function(n_sim = 2e2) {
   dat <- dat[,c('ID', Wname, 'A', "T.tilde", "Delta")]
 
   # input: scalar q, W vector. computes for all W, the S(q|A,W)
-  true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {1 - pexp(q, rate = 1 + .7*w^2 - .8*A)})
+  true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {1 - plnorm(q, meanlog = 2 - 1*w + 1*A, sdlog = .01)})
   # input: vector q. mean(S(q|A,W)|A), average out W. loop over q
   true_surv <- function(q_grid, surv_fn, A) {
-    W_grid <- seq(0, 1.5, .01)
+    W_grid <- seq(0, 2, .01)
     survout <- numeric()
-    for (q in q_grid) survout <- c(survout, mean(surv_fn(q = q/20, W = W_grid, A = A)))
+    for (q in q_grid) survout <- c(survout, mean(surv_fn(q = q/1, W = W_grid, A = A)))
+    # for (q in q_grid) survout <- c(survout, mean(surv_fn(q = (q-1)/.2, W = W_grid, A = A)))
     return(survout)
   }
   truth_surv <- function(q) true_surv(q_grid = q, surv_fn = true_surv_one, A = 1)
-  return(list(dat = dat, true_surv = truth_surv))
+  truth_surv0 <- function(q) true_surv(q_grid = q, surv_fn = true_surv_one, A = 0)
+  return(list(dat = dat, true_surv1 = truth_surv, true_surv0 = truth_surv0))
 }
 
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
@@ -43,7 +50,6 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
                   ftype = dat$Delta,
                   trt = dat$A,
                   adjustVars = data.frame(dat[,Wname]),
-                  # t0 = max(dat$T.tilde),
                   SL.trt = c('SL.glm', 'SL.gam'),
                   SL.ftime = c('SL.glm', 'SL.gam'),
                   SL.ctime = c('SL.glm', 'SL.gam'),
@@ -62,7 +68,7 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   est_only <- as.data.frame(est_only)
   rownames(est_only) <- names_groups
   colnames(est_only) <- paste0("t", seq_len(ncol(est_only)))
-  
+
   s_0 <- 1 - as.numeric(est_only[1,])
   s_1 <- 1 - as.numeric(est_only[2,])
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
@@ -70,7 +76,7 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
-  true_surv <- simulated$true_surv
+  true_surv <- simulated$true_surv1
   # KM
   library(survival)
   n.data <- nrow(df)
@@ -78,22 +84,30 @@ do_once <- function(n_sim = 2e2) {
   # SL
   library(MOSS)
   SL_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
-  SL_fit$initial_fit(g.SL.Lib = c("SL.mean","SL.glm"),
-                     Delta.SL.Lib = c("SL.mean","SL.glm"),
-                     ht.SL.Lib = c("SL.mean","SL.glm"))
+  SL_fit$initial_fit(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
+                     Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
+                     ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
   SL_fit$transform_failure_hazard_to_survival()
   # MOSS
-  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
-  MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm"),
-                         Delta.SL.Lib = c("SL.mean","SL.glm"),
-                         ht.SL.Lib = c("SL.mean","SL.glm"))
-  # MOSS_fit$Psi.hat
+  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
+  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
+  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e1, max.iter = 5e1, verbose = FALSE)
+  MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
+                         Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
+                         ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
+  plot(km.fit, col = 4:5)
+  MOSS_fit$plot_onestep_curve(col = 'green', add = T)
+  curve(true_surv(x), from = 0, 50, add = TRUE)
+  curve(simulated$true_surv0(x), from = 0, 50, add = TRUE)
+  
   # survtmle
-  survtmle_out <- fit_survtmle(dat = df)
+  # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
+  survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
   s_0 <- survtmle_out$s_0
   s_1 <- survtmle_out$s_1
   t_survtmle <- survtmle_out$time
 
+  lines(s_1 ~ t_survtmle, col = 'red', lty = 1)
   # compute error
   error_SL <- survError$new(true_surv = true_surv, object = SL_fit, mode = 'SL')
   error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
@@ -121,7 +135,7 @@ clusterSize(cl) # just to check
 # cl <- makeSOCKcluster(nw)
 # registerDoSNOW(cl)
 
-n_sim <- 2e2
+n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
