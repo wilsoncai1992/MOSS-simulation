@@ -88,8 +88,8 @@ do_once <- function(n_sim = 2e2) {
                      ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
   SL_fit$transform_failure_hazard_to_survival()
   # MOSS
-  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
-  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
+  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
+  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
   # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e1, max.iter = 5e1, verbose = FALSE)
   MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
                          Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
@@ -134,7 +134,7 @@ clusterSize(cl) # just to check
 # cl <- makeSOCKcluster(nw)
 # registerDoSNOW(cl)
 
-n_sim <- 3e2
+n_sim <- 1e2
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
