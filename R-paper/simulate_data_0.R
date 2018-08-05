@@ -6,7 +6,7 @@ simulate_data <- function(n_sim = 2e2) {
     node("W", distr = "runif", min = 0, max = 1.5) +
     node("A", distr = "rbinom", size = 1, prob = .15 + .5*as.numeric(W > .75)) +
     node("Trexp", distr = "rexp", rate = 1 + .7*W^2 - .8*A) +
-    node("Cweib", distr = "rweibull", shape = 1 - .5*W, scale = 75) +
+    node("Cweib", distr = "rweibull", shape = 1 + .5*W, scale = 75) +
     # node("Cweib", distr = "rconst", const = 200) +
     # node("T", distr = "rconst", const = ceiling(Trexp*2)) +
     # node("C", distr = "rconst", const = ceiling(Cweib*2)) +

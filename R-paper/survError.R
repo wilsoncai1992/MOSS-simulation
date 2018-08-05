@@ -25,7 +25,8 @@ survError <- R6Class("survError",
         # SL output
         if (mode == 'SL') self$surv_fit  <- stepfun(1:object$T.max, c(1, colMeans(object$Qn.A1.t_full)), f = 1, right = TRUE)
         # onestep output
-        if (mode == 'onestep') self$surv_fit  <- stepfun(1:object$T.max, c(1, object$Psi.hat), f = 1, right = TRUE)
+        # if (mode == 'onestep') self$surv_fit  <- stepfun(1:object$T.max, c(1, object$Psi.hat), f = 1, right = TRUE)
+        if (mode == 'onestep') self$surv_fit  <- stepfun(1:object$T.max, c(object$Psi.hat, 0), f = 1, right = TRUE)
       }
     },
     display = function(...){

@@ -14,6 +14,7 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
                   SL.ftime = c("SL.mean", 'SL.glm', 'SL.gam'),
                   SL.ctime = c("SL.mean", 'SL.glm', 'SL.gam'),
                   method = "hazard",
+                  # tol = 1/(sqrt(length(dat$T.tilde)))/10,
                   returnIC = TRUE,
                   verbose = FALSE
   )
@@ -69,8 +70,9 @@ do_once <- function(n_sim = 2e2) {
   s_0 <- survtmle_out$s_0
   s_1 <- survtmle_out$s_1
   t_survtmle <- survtmle_out$time
-
-  # lines(s_1 ~ t_survtmle, col = 'red', lty = 1)
+  # browser()
+  # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
+  
   # compute error
   error_SL <- survError$new(true_surv = true_surv, object = SL_fit, mode = 'SL')
   error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
@@ -98,8 +100,8 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-# n_sim <- 1e2
-n_sim <- 1e3
+n_sim <- 1e2
+# n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
