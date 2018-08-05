@@ -1,18 +1,18 @@
 library(MOSS)
 source('./survError.R')
 # simulate data
-source('./simulate_data.R')
+source('./simulate_data_0.R')
+library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
-  library(survtmle)
   dat$T.tilde[dat$T.tilde <= 0] <- 1
   t_0 = max(dat$T.tilde)
   fit <- survtmle(ftime = dat$T.tilde,
                   ftype = dat$Delta,
                   trt = dat$A,
                   adjustVars = data.frame(dat[,Wname]),
-                  SL.trt = c('SL.glm', 'SL.gam'),
-                  SL.ftime = c('SL.glm', 'SL.gam'),
-                  SL.ctime = c('SL.glm', 'SL.gam'),
+                  SL.trt = c("SL.mean", 'SL.glm', 'SL.gam'),
+                  SL.ftime = c("SL.mean", 'SL.glm', 'SL.gam'),
+                  SL.ctime = c("SL.mean", 'SL.glm', 'SL.gam'),
                   method = "hazard",
                   returnIC = TRUE,
                   verbose = FALSE
@@ -36,16 +36,16 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   # ts.plot(s_0)
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
+library(survival)
+library(MOSS)
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
   true_surv <- simulated$true_surv1
   # KM
-  library(survival)
   n.data <- nrow(df)
   km.fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
   # SL
-  library(MOSS)
   SL_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
   SL_fit$initial_fit(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
                      Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
@@ -83,8 +83,8 @@ do_once <- function(n_sim = 2e2) {
 }
 
 # repeat 100 times
-# N_SIMULATION = 1e2
-N_SIMULATION = 8
+N_SIMULATION = 1e2
+# N_SIMULATION = 8
 library(foreach)
 # library(Rmpi)
 # library(doMPI)
@@ -98,14 +98,15 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-n_sim <- 1e2
+# n_sim <- 1e2
+n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
                   .inorder = FALSE,
                   .errorhandling = 'pass',
-                  # .verbose = T) %dopar% {
-                  .verbose = T) %do% {
+                  .verbose = T) %dopar% {
+                  # .verbose = T) %do% {
                     if(it2%%10 == 0) print(it2)
                     source('./survError.R')
                     do_once(n_sim = n_sim)
