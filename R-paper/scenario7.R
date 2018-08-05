@@ -1,46 +1,7 @@
 library(MOSS)
 source('./survError.R')
 # simulate data
-simulate_data <- function(n_sim = 2e2) {
-  library(simcausal)
-  D <- DAG.empty()
-  D <- D +
-    node("W1", distr = "rbinom", size = 1, prob = .5) +
-    node("W", distr = "runif", min = 0, max = 1.5) +
-    node("A", distr = "rbinom", size = 1, prob = .15 + .5*as.numeric(W > .75)) +
-    node("Trexp", distr = "rexp", rate = 1 + .7*W^2 - .8*A) +
-    node("Cweib", distr = "rweibull", shape = 1 - .5*W, scale = 75) +
-    # node("Cweib", distr = "rconst", const = 200) +
-    # node("T", distr = "rconst", const = ceiling(Trexp*2)) +
-    # node("C", distr = "rconst", const = ceiling(Cweib*2)) +
-    node("T", distr = "rconst", const = round(Trexp*2)) +
-    node("C", distr = "rconst", const = round(Cweib*2)) +
-    # Observed random variable (follow-up time):
-    node("T.tilde", distr = "rconst", const = ifelse(T <= C , T, C)) +
-    # Observed random variable (censoring indicator, 1 - failure event, 0 - censored):
-    node("Delta", distr = "rconst", const = ifelse(T <= C , 1, 0))
-  setD <- set.DAG(D)
-  dat <- sim(setD, n = n_sim)
-  # only grab ID, W's, A, T.tilde, Delta
-  Wname <- grep('W', colnames(dat), value = TRUE)
-  dat <- dat[,c('ID', Wname, 'A', "T.tilde", "Delta")]
-
-  # input: scalar q, W vector. computes for all W, the S(q|A,W)
-  
-  true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {1 - pexp(q, rate = 1 + .7*w^2 - .8*A)})
-  # input: vector q. mean(S(q|A,W)|A), average out W. loop over q
-  true_surv <- function(q_grid, surv_fn, A) {
-    W_grid <- seq(0, 1.5, .01)
-    survout <- numeric()
-    for (q in q_grid) survout <- c(survout, mean(surv_fn(q = q/2, W = W_grid, A = A)))
-    # for (q in q_grid) survout <- c(survout, mean(surv_fn(q = (q-1)/.2, W = W_grid, A = A)))
-    return(survout)
-  }
-  truth_surv <- function(q) true_surv(q_grid = q, surv_fn = true_surv_one, A = 1)
-  truth_surv0 <- function(q) true_surv(q_grid = q, surv_fn = true_surv_one, A = 0)
-  return(list(dat = dat, true_surv1 = truth_surv, true_surv0 = truth_surv0))
-}
-
+source('./simulate_data.R')
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   library(survtmle)
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -56,6 +17,7 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
                   returnIC = TRUE,
                   verbose = FALSE
   )
+  # browser()
   # extract cumulative incidence at each timepoint
   tpfit <- timepoints(fit, times = seq_len(t_0))
   len_groups <- as.numeric(unique(lapply(lapply(tpfit, FUN = `[[`,
@@ -70,6 +32,8 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
 
   s_0 <- 1 - as.numeric(est_only[1,])
   s_1 <- 1 - as.numeric(est_only[2,])
+  # ts.plot(s_1)
+  # ts.plot(s_0)
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
 do_once <- function(n_sim = 2e2) {
@@ -88,7 +52,7 @@ do_once <- function(n_sim = 2e2) {
                      ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
   SL_fit$transform_failure_hazard_to_survival()
   # MOSS
-  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
+  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 4e2, verbose = FALSE)
   # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
   # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e1, max.iter = 5e1, verbose = FALSE)
   MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
@@ -119,20 +83,20 @@ do_once <- function(n_sim = 2e2) {
 }
 
 # repeat 100 times
-N_SIMULATION = 1e2
-# N_SIMULATION = 8
+# N_SIMULATION = 1e2
+N_SIMULATION = 8
 library(foreach)
-library(Rmpi)
-library(doMPI)
-cl = startMPIcluster()
-registerDoMPI(cl)
-clusterSize(cl) # just to check
+# library(Rmpi)
+# library(doMPI)
+# cl = startMPIcluster()
+# registerDoMPI(cl)
+# clusterSize(cl) # just to check
 
-# library(doSNOW)
-# library(tcltk)
-# nw <- parallel:::detectCores()  # number of workers
-# cl <- makeSOCKcluster(nw)
-# registerDoSNOW(cl)
+library(doSNOW)
+library(tcltk)
+nw <- parallel:::detectCores()  # number of workers
+cl <- makeSOCKcluster(nw)
+registerDoSNOW(cl)
 
 n_sim <- 1e2
 all_CI <- foreach(it2 = 1:N_SIMULATION,
@@ -140,7 +104,8 @@ all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
                   .inorder = FALSE,
                   .errorhandling = 'pass',
-                  .verbose = T) %dopar% {
+                  # .verbose = T) %dopar% {
+                  .verbose = T) %do% {
                     if(it2%%10 == 0) print(it2)
                     source('./survError.R')
                     do_once(n_sim = n_sim)
