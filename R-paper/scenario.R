@@ -2,9 +2,9 @@ library(MOSS)
 source('./survError.R')
 # simulate data
 # source('./simulate_data_0.R')
-# source('./simulate_data_1.R')
+source('./simulate_data_1.R')
 # source('./simulate_data_2.R')
-source('./simulate_data_3.R')
+# source('./simulate_data_3.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -73,7 +73,7 @@ do_once <- function(n_sim = 2e2) {
   error_KM <- survError$new(true_surv = true_surv, object = km.fit)
 
   # survtmle
-  # browser()
+  browser()
   error_survtmle <- tryCatch({
     # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
     survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
@@ -81,13 +81,10 @@ do_once <- function(n_sim = 2e2) {
     s_1 <- survtmle_out$s_1
     t_survtmle <- survtmle_out$time
     out <- survError$new(true_surv = true_surv, object = survtmle_out)
-    # browser()
     # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
-    # return(out)
     out
   },error = function(error_condition) {
     out <- error_SL
-    # return(out)
     out
   })
   return(list(error_SL = error_SL,
@@ -97,8 +94,8 @@ do_once <- function(n_sim = 2e2) {
 }
 
 # repeat 100 times
-N_SIMULATION = 1e2
-# N_SIMULATION = 8
+# N_SIMULATION = 1e2
+N_SIMULATION = 8
 library(foreach)
 # library(Rmpi)
 # library(doMPI)
@@ -112,9 +109,9 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-n_sim <- 1e2
+# n_sim <- 1e2
 # n_sim <- 5e2
-# n_sim <- 1e3
+n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
@@ -128,6 +125,7 @@ all_CI <- foreach(it2 = 1:N_SIMULATION,
                   }
 # shut down for memory
 # closeCluster(cl)
+stopCluster(cl)
 head(all_CI)
 table(names(all_CI))
 
@@ -135,6 +133,9 @@ error_SL_list <- all_CI[names(all_CI) == 'error_SL']
 error_onestep_list <- all_CI[names(all_CI) == 'error_onestep']
 error_KM_list <- all_CI[names(all_CI) == 'error_KM']
 error_survtmle_list <- all_CI[names(all_CI) == 'error_survtmle']
+
+mean(sapply(error_survtmle_list, function(x) is.null(x$mode)))
+
 
 length(error_SL_list)
 length(error_onestep_list)
