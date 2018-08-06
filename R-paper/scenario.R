@@ -2,7 +2,9 @@ library(MOSS)
 source('./survError.R')
 # simulate data
 # source('./simulate_data_0.R')
-source('./simulate_data_1.R')
+# source('./simulate_data_1.R')
+# source('./simulate_data_2.R')
+source('./simulate_data_3.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -48,7 +50,7 @@ do_once <- function(n_sim = 2e2) {
   n.data <- nrow(df)
   km.fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
   # SL
-  SL_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-2, max.iter = 2e2, verbose = FALSE)
+  SL_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
   SL_fit$initial_fit(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
                      Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
                      ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
@@ -73,7 +75,7 @@ do_once <- function(n_sim = 2e2) {
   t_survtmle <- survtmle_out$time
   # browser()
   # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
-  
+
   # compute error
   error_SL <- survError$new(true_surv = true_surv, object = SL_fit, mode = 'SL')
   error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
@@ -88,7 +90,7 @@ do_once <- function(n_sim = 2e2) {
 # repeat 100 times
 N_SIMULATION = 1e2
 # N_SIMULATION = 8
-library(foreach)
+# library(foreach)
 # library(Rmpi)
 # library(doMPI)
 # cl = startMPIcluster()
@@ -111,7 +113,7 @@ all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .errorhandling = 'pass',
                   .verbose = T) %dopar% {
                   # .verbose = T) %do% {
-                    if(it2%%10 == 0) print(it2)
+                    # if(it2%%10 == 0) print(it2)
                     source('./survError.R')
                     do_once(n_sim = n_sim)
                   }
@@ -123,6 +125,11 @@ error_SL_list <- all_CI[names(all_CI) == 'error_SL']
 error_onestep_list <- all_CI[names(all_CI) == 'error_onestep']
 error_KM_list <- all_CI[names(all_CI) == 'error_KM']
 error_survtmle_list <- all_CI[names(all_CI) == 'error_survtmle']
+
+length(error_SL_list)
+length(error_onestep_list)
+length(error_KM_list)
+length(error_survtmle_list)
 
 error_SL <- survError_list$new(list_of_survError = error_SL_list)$compute()
 error_onestep <- survError_list$new(list_of_survError = error_onestep_list)$compute()
