@@ -1,7 +1,8 @@
 library(MOSS)
 source('./survError.R')
 # simulate data
-source('./simulate_data_0.R')
+# source('./simulate_data_0.R')
+source('./simulate_data_1.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -100,7 +101,8 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-n_sim <- 1e2
+# n_sim <- 1e2
+n_sim <- 2e2
 # n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
