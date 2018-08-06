@@ -8,7 +8,7 @@ source('./simulate_data_3.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
-  t_0 = max(dat$T.tilde)
+  t_0 <- min(max(dat$T.tilde), 20)
   fit <- survtmle(ftime = dat$T.tilde,
                   ftype = dat$Delta,
                   trt = dat$A,
@@ -67,20 +67,29 @@ do_once <- function(n_sim = 2e2) {
   # curve(true_surv(x), from = 0, 50, add = TRUE)
   # curve(simulated$true_surv0(x), from = 0, 50, add = TRUE)
 
-  # survtmle
-  # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
-  survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
-  s_0 <- survtmle_out$s_0
-  s_1 <- survtmle_out$s_1
-  t_survtmle <- survtmle_out$time
-  # browser()
-  # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
-
   # compute error
   error_SL <- survError$new(true_surv = true_surv, object = SL_fit, mode = 'SL')
   error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
   error_KM <- survError$new(true_surv = true_surv, object = km.fit)
-  error_survtmle <- survError$new(true_surv = true_surv, object = survtmle_out)
+
+  # survtmle
+  # browser()
+  error_survtmle <- tryCatch({
+    # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
+    survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
+    s_0 <- survtmle_out$s_0
+    s_1 <- survtmle_out$s_1
+    t_survtmle <- survtmle_out$time
+    out <- survError$new(true_surv = true_surv, object = survtmle_out)
+    # browser()
+    # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
+    # return(out)
+    out
+  },error = function(error_condition) {
+    out <- error_SL
+    # return(out)
+    out
+  })
   return(list(error_SL = error_SL,
               error_onestep = error_onestep,
               error_KM = error_KM,
@@ -90,7 +99,7 @@ do_once <- function(n_sim = 2e2) {
 # repeat 100 times
 N_SIMULATION = 1e2
 # N_SIMULATION = 8
-# library(foreach)
+library(foreach)
 # library(Rmpi)
 # library(doMPI)
 # cl = startMPIcluster()
@@ -103,8 +112,8 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-# n_sim <- 1e2
-n_sim <- 2e2
+n_sim <- 1e2
+# n_sim <- 5e2
 # n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
@@ -118,8 +127,9 @@ all_CI <- foreach(it2 = 1:N_SIMULATION,
                     do_once(n_sim = n_sim)
                   }
 # shut down for memory
-closeCluster(cl)
+# closeCluster(cl)
 head(all_CI)
+table(names(all_CI))
 
 error_SL_list <- all_CI[names(all_CI) == 'error_SL']
 error_onestep_list <- all_CI[names(all_CI) == 'error_onestep']
