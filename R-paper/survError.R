@@ -13,9 +13,9 @@ survError <- R6Class("survError",
       if ('survfit' %in% class(object)) {
         # KM output
         ha <- summary(object)
-        surv1_km <- ha$surv[ha$strata == 'A=1']
-        time1_km <- ha$time[ha$strata == 'A=1']
-        self$surv_fit  <- stepfun(time1_km, c(1, surv1_km), f = 1, right = TRUE)
+        surv1_km <- tail(ha$surv, ha$strata['A=1'])
+        time1_km <- tail(ha$time, ha$strata['A=1'])
+        self$surv_fit  <- stepfun(time1_km, c(0, surv1_km), f = 1, right = TRUE)
       }
       if ('data.frame' %in% class(object)){
         # survtmle output

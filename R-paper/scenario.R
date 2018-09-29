@@ -5,7 +5,7 @@ source('./survError.R')
 # source('./simulate_data_0.R')
 # source('./simulate_data_1.R')
 # source('./simulate_data_2.R')
-source('./simulate_data_3.R')
+source('./~simulate_data_3.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -73,7 +73,6 @@ do_once <- function(n_sim = 2e2) {
 
   # survtmle
   error_survtmle <- tryCatch({
-    # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
     survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
     s_0 <- survtmle_out$s_0
     s_1 <- survtmle_out$s_1
@@ -85,6 +84,16 @@ do_once <- function(n_sim = 2e2) {
     out <- error_SL
     out
   })
+
+  df1 <- data.frame(s = s_1, time = t_survtmle, method = 'iterative TMLE')
+  df2 <- data.frame(s = MOSS_fit$Psi.hat, time = 1:MOSS_fit$T.max, method = 'one-step TMLE')
+  df3 <- data.frame(s = colMeans(SL_fit$Qn.A1.t_full), time = 1:SL_fit$T.max, method = 'initial fit')
+  df4 <- data.frame(s = tail(km.fit$surv, km.fit$strata['A=1']), time = tail(km.fit$time, km.fit$strata['A=1']), method = 'KM')
+  # df_realization <- rbind(df1, df2, df4)
+  df_realization <- rbind(df1, df2, df3, df4)
+  library(ggplot2)
+  ggplot(df_realization, aes(x = time, y = s, color = method)) + geom_line()
+  
   return(list(error_SL = error_SL,
               error_onestep = error_onestep,
               error_KM = error_KM,

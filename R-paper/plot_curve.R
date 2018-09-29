@@ -48,8 +48,9 @@ plot1 <- ggplot(data = df_bias2, aes(x = time, y = value, color = method)) +
   ylab('bias') +
   xlim(c(0,T_max)) +
   theme_bw() +
-  theme(legend.position="bottom")
-ggsave(filename=file.path('./plot/', "bias.pdf"), plot=plot1, width=6, height=6)
+  theme(legend.position="bottom") +
+  guides(color=guide_legend(nrow=2))
+ggsave(filename=file.path('./plot/', "bias.pdf"), plot=plot1, width=4, height=4)
 
 # variance
 plot2 <- ggplot(data = df_variance2, aes(x = time, y = value, color = method)) +
@@ -58,16 +59,19 @@ plot2 <- ggplot(data = df_variance2, aes(x = time, y = value, color = method)) +
   ylab('variance') +
   xlim(c(0, T_max)) +
   theme_bw() +
-  theme(legend.position="bottom")
-ggsave(filename=file.path("./plot/", "variance.pdf"), plot=plot2, width=6, height=6)
+  theme(legend.position="bottom") +
+  guides(color=guide_legend(nrow=2))
+ggsave(filename=file.path("./plot/", "variance.pdf"), plot=plot2, width=4, height=4)
 # mse
 plot3 <- ggplot(data = df_mse2, aes(x = time, y = value, color = method)) +
   geom_line() +
   geom_hline(yintercept = 0, lty = 2) +
   ylab('MSE') +
   xlim(c(0,T_max)) +
-  theme_bw() + theme(legend.position="bottom")
-ggsave(filename=file.path("./plot/", "MSE.pdf"), plot=plot3, width=6, height=6)
+  theme_bw() +
+  theme(legend.position="bottom") +
+  guides(color=guide_legend(nrow=2))
+ggsave(filename=file.path("./plot/", "MSE.pdf"), plot=plot3, width=4, height=4)
 
 # relative efficiency
 plot4 <- ggplot(data = df_relative_efficiency2, aes(x = time, y = value, color = method)) +
@@ -77,6 +81,7 @@ plot4 <- ggplot(data = df_relative_efficiency2, aes(x = time, y = value, color =
   xlim(c(0,T_max)) +
   ylim(c(0, 3)) +
   theme_bw() +
-  theme(legend.position="bottom")
-ggsave(filename=file.path("./plot/", "relative_efficiency.pdf"), plot=plot4, width=6, height=6)
+  theme(legend.position="bottom") +
+  guides(color=guide_legend(nrow=2))
+ggsave(filename=file.path("./plot/", "relative_efficiency.pdf"), plot=plot4, width=4, height=4)
 
