@@ -109,17 +109,17 @@ do_once <- function(n_sim = 2e2) {
 N_SIMULATION = 1e2
 # N_SIMULATION = 8
 library(foreach)
-library(Rmpi)
-library(doMPI)
-cl = startMPIcluster()
-registerDoMPI(cl)
-clusterSize(cl) # just to check
+# library(Rmpi)
+# library(doMPI)
+# cl = startMPIcluster()
+# registerDoMPI(cl)
+# clusterSize(cl) # just to check
 
-# library(doSNOW)
-# library(tcltk)
-# nw <- parallel:::detectCores()  # number of workers
-# cl <- makeSOCKcluster(nw)
-# registerDoSNOW(cl)
+library(doSNOW)
+library(tcltk)
+nw <- parallel:::detectCores()  # number of workers
+cl <- makeSOCKcluster(nw)
+registerDoSNOW(cl)
 
 n_sim <- 2e2
 all_CI <- foreach(it2 = 1:N_SIMULATION,

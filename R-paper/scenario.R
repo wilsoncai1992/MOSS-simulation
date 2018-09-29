@@ -1,10 +1,11 @@
+library(survival)
 library(MOSS)
 source('./survError.R')
 # simulate data
 # source('./simulate_data_0.R')
-source('./simulate_data_1.R')
+# source('./simulate_data_1.R')
 # source('./simulate_data_2.R')
-# source('./simulate_data_3.R')
+source('./simulate_data_3.R')
 library(survtmle)
 fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   dat$T.tilde[dat$T.tilde <= 0] <- 1
@@ -40,8 +41,6 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
   # ts.plot(s_0)
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
-library(survival)
-library(MOSS)
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
@@ -56,7 +55,7 @@ do_once <- function(n_sim = 2e2) {
                      ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
   SL_fit$transform_failure_hazard_to_survival()
   # MOSS
-  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 4e2, verbose = FALSE)
+  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 5e2, verbose = FALSE)
   # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
   # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e1, max.iter = 5e1, verbose = FALSE)
   MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
@@ -73,7 +72,6 @@ do_once <- function(n_sim = 2e2) {
   error_KM <- survError$new(true_surv = true_surv, object = km.fit)
 
   # survtmle
-  browser()
   error_survtmle <- tryCatch({
     # survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1', 'W2', 'W3', 'W4', 'W5'))
     survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
