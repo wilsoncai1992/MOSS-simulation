@@ -72,18 +72,11 @@ do_once <- function(n_sim = 2e2) {
   error_KM <- survError$new(true_surv = true_surv, object = km.fit)
 
   # survtmle
-  error_survtmle <- tryCatch({
-    survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
-    s_0 <- survtmle_out$s_0
-    s_1 <- survtmle_out$s_1
-    t_survtmle <- survtmle_out$time
-    out <- survError$new(true_surv = true_surv, object = survtmle_out)
-    # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
-    out
-  },error = function(error_condition) {
-    out <- error_SL
-    out
-  })
+  survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
+  s_0 <- survtmle_out$s_0
+  s_1 <- survtmle_out$s_1
+  t_survtmle <- survtmle_out$time
+  error_survtmle <- survError$new(true_surv = true_surv, object = survtmle_out)
 
   return(list(error_SL = error_SL,
               error_onestep = error_onestep,
@@ -107,17 +100,15 @@ clusterSize(cl) # just to check
 # cl <- makeSOCKcluster(nw)
 # registerDoSNOW(cl)
 
-# n_sim <- 1e2
+n_sim <- 1e2
 # n_sim <- 5e2
-n_sim <- 1e3
+# n_sim <- 1e3
 all_CI <- foreach(it2 = 1:N_SIMULATION,
                   .combine = c,
                   .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
                   .inorder = FALSE,
                   .errorhandling = 'pass',
                   .verbose = T) %dopar% {
-                  # .verbose = T) %do% {
-                    # if(it2%%10 == 0) print(it2)
                     source('./survError.R')
                     do_once(n_sim = n_sim)
                   }
@@ -146,6 +137,3 @@ error_KM <- survError_list$new(list_of_survError = error_KM_list)$compute()
 error_survtmle <- survError_list$new(list_of_survError = error_survtmle_list)$compute()
 
 save(error_SL, error_KM, error_onestep, error_survtmle, n_sim, file = 'scenario.rda')
-# ================
-# onestep_all_t_fit <- onestep_all_t$survival_df
-# sfun_onestep_all_t  <- stepfun(onestep_all_t_fit$T.uniq, c(1, onestep_all_t_fit$s_vec) , f = 1, right = TRUE)

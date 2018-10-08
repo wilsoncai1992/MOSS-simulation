@@ -1,6 +1,7 @@
 load('./scenario.rda')
 dir.create('./plot/')
-T_max <- 10
+# T_max <- 10
+T_max <- 20
 # create df
 df_bias <- data.frame(time = 1:length(error_KM$bias),
                       KM = error_KM$bias,
@@ -35,6 +36,7 @@ df_relative_efficiency$onestep[df_mse$survtmle < 1e-5] <- 1
 df_relative_efficiency[is.na(df_relative_efficiency)] <- 1
 df_relative_efficiency$KM[df_relative_efficiency$KM>3] <- 3
 df_relative_efficiency$SL[df_relative_efficiency$SL>3] <- 3
+df_relative_efficiency$onestep[df_relative_efficiency$onestep>3] <- 3
 
 df_bias2 <- gather_into_long(df_bias)
 df_variance2 <- gather_into_long(df_variance)
