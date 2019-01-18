@@ -1,28 +1,22 @@
 library(survival)
 library(MOSS)
-source('./survError.R')
 # simulate data
-# source('./simulate_data_0.R')
-# source('./simulate_data_1.R')
-# source('./simulate_data_2.R')
 source('./simulate_data_3.R')
+# source('./simulate_data_91.R')
 library(survtmle)
-fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
-  dat$T.tilde[dat$T.tilde <= 0] <- 1
-  t_0 <- min(max(dat$T.tilde), 20)
-  fit <- survtmle(ftime = dat$T.tilde,
-                  ftype = dat$Delta,
-                  trt = dat$A,
-                  adjustVars = data.frame(dat[,Wname]),
+fit_survtmle <- function(T.tilde, Delta, A, W_df) {
+  t_0 <- max(T.tilde)
+  fit <- survtmle(ftime = T.tilde,
+                  ftype = Delta,
+                  trt = A,
+                  adjustVars = W_df,
                   SL.trt = c("SL.mean", 'SL.glm', 'SL.gam'),
                   SL.ftime = c("SL.mean", 'SL.glm', 'SL.gam'),
                   SL.ctime = c("SL.mean", 'SL.glm', 'SL.gam'),
                   method = "hazard",
-                  # tol = 1/(sqrt(length(dat$T.tilde)))/10,
                   returnIC = TRUE,
                   verbose = FALSE
   )
-  # browser()
   # extract cumulative incidence at each timepoint
   tpfit <- timepoints(fit, times = seq_len(t_0))
   len_groups <- as.numeric(unique(lapply(lapply(tpfit, FUN = `[[`,
@@ -37,115 +31,294 @@ fit_survtmle <- function(dat, Wname = c('W', 'W1')) {
 
   s_0 <- 1 - as.numeric(est_only[1,])
   s_1 <- 1 - as.numeric(est_only[2,])
-  # ts.plot(s_1)
-  # ts.plot(s_0)
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
   true_surv <- simulated$true_surv1
-  # KM
-  n.data <- nrow(df)
-  km.fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
-  # SL
-  SL_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-1, max.iter = 2e2, verbose = FALSE)
-  SL_fit$initial_fit(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
-                     Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
-                     ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
-  SL_fit$transform_failure_hazard_to_survival()
-  # MOSS
-  MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e-4, max.iter = 1e3, verbose = FALSE)
-  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e0, max.iter = 1e2, verbose = FALSE, tol = 1e-1/nrow(df))
-  # MOSS_fit <- MOSS::MOSS$new(dat = df, dW = 1, epsilon.step = 1e1, max.iter = 5e1, verbose = FALSE)
-  MOSS_fit$onestep_curve(g.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
-                         Delta.SL.Lib = c("SL.mean","SL.glm",'SL.gam'),
-                         ht.SL.Lib = c("SL.mean","SL.glm",'SL.gam'))
-  # plot(km.fit, col = 4:5)
-  # MOSS_fit$plot_onestep_curve(col = 'green', add = T)
-  # curve(true_surv(x), from = 0, 50, add = TRUE)
-  # curve(simulated$true_surv0(x), from = 0, 50, add = TRUE)
 
-  # compute error
-  error_SL <- survError$new(true_surv = true_surv, object = SL_fit, mode = 'SL')
-  error_onestep <- survError$new(true_surv = true_surv, object = MOSS_fit, mode = 'onestep')
-  error_KM <- survError$new(true_surv = true_surv, object = km.fit)
+  sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam")
+  sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
+  sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
+  range(df$T.tilde)
+  df <- df[df$T.tilde > 0, ]
+  k_grid <- 1:max(df$T.tilde)
 
-  # survtmle
-  error_survtmle <- tryCatch({
-    survtmle_out <- fit_survtmle(dat = df,Wname = c('W', 'W1'))
-    s_0 <- survtmle_out$s_0
-    s_1 <- survtmle_out$s_1
-    t_survtmle <- survtmle_out$time
-    out <- survError$new(true_surv = true_surv, object = survtmle_out)
-    # lines(s_1 ~ t_survtmle, col = 'red', lty = 1) #WILSON
-    out
-  },error = function(error_condition) {
-    out <- error_SL
-    out
+  message("KM")
+  n_sample <- nrow(df)
+  km_fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
+  surv1_km <- tail(km_fit$surv, km_fit$strata['A=1'])
+  time1_km <- tail(km_fit$time, km_fit$strata['A=1'])
+  surv0_km <- tail(km_fit$surv, km_fit$strata['A=0'])
+  time0_km <- tail(km_fit$time, km_fit$strata['A=0'])
+  impute_KM <- function(time, km) {
+    surv1_km_final <- rep(NA, max(df$T.tilde))
+    surv1_km_final[time] <- km
+    surv1_km_final <- na.locf(surv1_km_final, na.rm = FALSE)
+    surv1_km_final[is.na(surv1_km_final)] <- 1
+    return(surv1_km_final)
+  }
+  surv1_km_final <- impute_KM(time = time1_km, km = surv1_km)
+  surv0_km_final <- impute_KM(time = time0_km, km = surv0_km)
+  km_fit_1 <- survival_curve$new(t = k_grid, survival = surv1_km_final)
+  km_fit_0 <- survival_curve$new(t = k_grid, survival = surv0_km_final)
+
+  message("SL")
+  sl_fit <- initial_sl_fit(
+    ftime = df$T.tilde,
+    ftype = df$Delta,
+    trt = df$A,
+    adjustVars = data.frame(df[, c("W", "W1")]),
+    t_0 = max(df$T.tilde),
+    SL.trt = sl_lib_g,
+    SL.ctime = sl_lib_censor,
+    SL.ftime = sl_lib_failure
+  )
+  sl_fit$density_failure_1$hazard_to_survival()
+  sl_fit$density_failure_0$hazard_to_survival()
+  # WILSON hack no data is t_tilde = 2
+  sl_fit$density_failure_1$t <- k_grid
+  sl_fit$density_failure_0$t <- k_grid
+
+  # ipcw
+  message("ipcw + ee")
+  ipcw_fit_1_all <- repeat_t_grid$new(
+    method = ipcw,
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_1,
+    density_censor = sl_fit$density_censor_1,
+    g1W = sl_fit$g1W,
+    A_intervene = 1
+  )$fit(k_grid = k_grid)
+  ipcw_fit_0_all <- repeat_t_grid$new(
+    method = ipcw,
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_0,
+    density_censor = sl_fit$density_censor_0,
+    g1W = sl_fit$g1W,
+    A_intervene = 0
+  )$fit(k_grid = k_grid)
+  ee_fit_1_all <- repeat_t_grid$new(
+    method = ee,
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_1,
+    density_censor = sl_fit$density_censor_1,
+    g1W = sl_fit$g1W,
+    A_intervene = 1
+  )$fit(k_grid = k_grid)
+  ee_fit_0_all <- repeat_t_grid$new(
+    method = ee,
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_0,
+    density_censor = sl_fit$density_censor_0,
+    g1W = sl_fit$g1W,
+    A_intervene = 0
+  )$fit(k_grid = k_grid)
+  ipcw_fit_1 <- survival_curve$new(t = k_grid, survival = ipcw_fit_1_all)
+  ipcw_fit_0 <- survival_curve$new(t = k_grid, survival = ipcw_fit_0_all)
+  ee_fit_1 <- survival_curve$new(t = k_grid, survival = ee_fit_1_all)
+  ee_fit_0 <- survival_curve$new(t = k_grid, survival = ee_fit_0_all)
+  library(ggpubr)
+  # gg_sl <- ggarrange(
+  #   sl_fit$density_failure_1$display(type = "survival", W = df$W),
+  #   sl_fit$density_failure_0$display(type = "survival", W = df$W),
+  #   ncol = 2,
+  #   labels = "AUTO",
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  sl_density_failure_1_marginal <- sl_fit$density_failure_1$clone(deep = TRUE)
+  sl_density_failure_0_marginal <- sl_fit$density_failure_0$clone(deep = TRUE)
+  sl_density_failure_1_marginal$survival <- matrix(colMeans(sl_density_failure_1_marginal$survival), nrow = 1)
+  sl_density_failure_0_marginal$survival <- matrix(colMeans(sl_density_failure_0_marginal$survival), nrow = 1)
+  # gg_sl2 <- ggarrange(
+  #   sl_density_failure_1_marginal$display(type = "survival"),
+  #   sl_density_failure_0_marginal$display(type = "survival"),
+  #   ncol = 2,
+  #   labels = "AUTO",
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  # gg_ipcw <- ggarrange(
+  #   ipcw_fit_1$display(type = "survival"),
+  #   ipcw_fit_0$display(type = "survival"),
+  #   ncol = 2,
+  #   labels = "AUTO",
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  # gg_ee <- ggarrange(
+  #   ee_fit_1$display(type = "survival"),
+  #   ee_fit_0$display(type = "survival"),
+  #   ncol = 2,
+  #   labels = "AUTO",
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  message("moss")
+  moss_fit <- MOSS$new(
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_1,
+    density_censor = sl_fit$density_censor_1,
+    g1W = sl_fit$g1W,
+    A_intervene = 1,
+    k_grid = k_grid
+  )
+  psi_moss_1 <- moss_fit$onestep_curve(
+    epsilon = 1e-3,
+    # epsilon = 1e-5,
+    max_num_interation = 1e2,
+    verbose = TRUE
+  )
+  moss_fit <- MOSS$new(
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_0,
+    density_censor = sl_fit$density_censor_0,
+    g1W = sl_fit$g1W,
+    A_intervene = 0,
+    k_grid = k_grid
+  )
+  psi_moss_0 <- moss_fit$onestep_curve(
+    epsilon = 1e-3,
+    # epsilon = 1e-5,
+    max_num_interation = 1e2,
+    verbose = TRUE
+  )
+  moss_fit_1 <- survival_curve$new(t = k_grid, survival = psi_moss_1)
+  moss_fit_0 <- survival_curve$new(t = k_grid, survival = psi_moss_0)
+  # gg_moss <- ggarrange(
+  #   moss_fit_1$display(type = "survival"),
+  #   moss_fit_0$display(type = "survival"),
+  #   ncol = 2,
+  #   labels = "AUTO",
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  # ggarrange(
+  #   gg_sl,
+  #   gg_sl2,
+  #   gg_ipcw,
+  #   gg_ee,
+  #   gg_moss,
+  #   nrow = 5,
+  #   common.legend = TRUE,
+  #   legend = "bottom"
+  # )
+  # tmle
+  message("tmle")
+  tmle_fit <- tryCatch(
+    {
+      tmle_fit <- fit_survtmle(
+        T.tilde = df$T.tilde,
+        Delta = df$Delta,
+        A = df$A,
+        W_df = data.frame(df[, c("W", "W1")])
+      )
+    },
+    error = function(cond) {
+      message("tmle error")
+      NULL
   })
+  if (is.null(tmle_fit)) {
+    tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
+    tmle_fit_0 <- sl_density_failure_0_marginal$clone(deep = TRUE)
+  } else {
+    tmle_fit_1 <- survival_curve$new(t = k_grid, survival = tmle_fit$s_1)
+    tmle_fit_0 <- survival_curve$new(t = k_grid, survival = tmle_fit$s_0)
+  }
+  survival_truth_1 <- survival_curve$new(t = k_grid, survival = simulated$true_surv1(k_grid))
+  survival_truth_0 <- survival_curve$new(t = k_grid, survival = simulated$true_surv0(k_grid))
 
-  return(list(error_SL = error_SL,
-              error_onestep = error_onestep,
-              error_KM = error_KM,
-              error_survtmle = error_survtmle))
+  df_entropy_moss_1 <- evaluate_metric$new(
+    survival = moss_fit_1, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_sl_1 <- evaluate_metric$new(
+    survival = sl_density_failure_1_marginal, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_ipcw_1 <- evaluate_metric$new(
+    survival = ipcw_fit_1, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_ee_1 <- evaluate_metric$new(
+    survival = ee_fit_1, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_tmle_1 <- evaluate_metric$new(
+    survival = tmle_fit_1, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_km_1 <- evaluate_metric$new(
+    survival = km_fit_1, survival_truth = survival_truth_1
+  # )$evaluate_cross_entropy()
+  )$evaluate_mse()
+  df_entropy_moss_1$method <- "MOSS"
+  df_entropy_sl_1$method <- "super learner"
+  df_entropy_ipcw_1$method <- "IPCW"
+  df_entropy_ee_1$method <- "EE"
+  df_entropy_tmle_1$method <- "TMLE"
+  df_entropy_km_1$method <- "KM"
+  df_plot <- rbind(
+    df_entropy_moss_1,
+    df_entropy_sl_1,
+    df_entropy_ipcw_1,
+    df_entropy_ee_1,
+    df_entropy_tmle_1,
+    df_entropy_km_1
+  )
+  return(df_plot)
 }
 
-# repeat 100 times
 N_SIMULATION = 1e2
 # N_SIMULATION = 8
 library(foreach)
-library(Rmpi)
-library(doMPI)
-cl = startMPIcluster()
-registerDoMPI(cl)
-clusterSize(cl) # just to check
+# library(Rmpi)
+# library(doMPI)
+# cl = startMPIcluster()
+# registerDoMPI(cl)
+# clusterSize(cl) # just to check
 
-# library(doSNOW)
-# library(tcltk)
-# nw <- parallel:::detectCores()  # number of workers
-# cl <- makeSOCKcluster(nw)
-# registerDoSNOW(cl)
+library(doSNOW)
+library(tcltk)
+nw <- parallel:::detectCores()  # number of workers
+cl <- makeSOCKcluster(nw)
+registerDoSNOW(cl)
 
-# n_sim <- 1e2
-# n_sim <- 5e2
-n_sim <- 1e3
-all_CI <- foreach(it2 = 1:N_SIMULATION,
-                  .combine = c,
-                  .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
-                  .inorder = FALSE,
-                  .errorhandling = 'pass',
-                  .verbose = T) %dopar% {
-                  # .verbose = T) %do% {
-                    # if(it2%%10 == 0) print(it2)
-                    source('./survError.R')
-                    do_once(n_sim = n_sim)
-                  }
+# n_sim_grid <- c(50, 1e2)
+n_sim_grid <- c(1e2, 3e2)
+# n_sim_grid <- c(50, 1e2, 3e2, 5e2)
+df_metric <- foreach(
+  n_sim = n_sim_grid,
+  .combine = rbind,
+  .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
+  .inorder = FALSE,
+  .errorhandling = 'remove',
+  .verbose = TRUE
+) %:%
+  foreach(it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = 'remove') %dopar% {
+  df <- do_once(n_sim = n_sim)
+  df$id_mcmc <- it2
+  df$n <- n_sim
+  return(df)
+}
+table(df_metric$id_mcmc)
+
+save(df_metric, file = 'df_metric.rda')
+
 # shut down for memory
-closeCluster(cl)
-# stopCluster(cl)
-head(all_CI)
-table(names(all_CI))
-
-error_SL_list <- all_CI[names(all_CI) == 'error_SL']
-error_onestep_list <- all_CI[names(all_CI) == 'error_onestep']
-error_KM_list <- all_CI[names(all_CI) == 'error_KM']
-error_survtmle_list <- all_CI[names(all_CI) == 'error_survtmle']
-
-mean(sapply(error_survtmle_list, function(x) is.null(x$mode)))
-
-
-length(error_SL_list)
-length(error_onestep_list)
-length(error_KM_list)
-length(error_survtmle_list)
-
-error_SL <- survError_list$new(list_of_survError = error_SL_list)$compute()
-error_onestep <- survError_list$new(list_of_survError = error_onestep_list)$compute()
-error_KM <- survError_list$new(list_of_survError = error_KM_list)$compute()
-error_survtmle <- survError_list$new(list_of_survError = error_survtmle_list)$compute()
-
-save(error_SL, error_KM, error_onestep, error_survtmle, n_sim, file = 'scenario.rda')
-# ================
-# onestep_all_t_fit <- onestep_all_t$survival_df
-# sfun_onestep_all_t  <- stepfun(onestep_all_t_fit$T.uniq, c(1, onestep_all_t_fit$s_vec) , f = 1, right = TRUE)
+# closeCluster(cl)
+stopCluster(cl)
