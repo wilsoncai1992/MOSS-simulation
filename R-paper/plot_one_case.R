@@ -1,7 +1,10 @@
 library(survival)
 library(MOSS)
 # simulate data
-source('./simulate_data_3.R')
+# source('./simulate_data_0.R')
+# source('./simulate_data_1.R')
+source('./simulate_data_2.R')
+# source('./simulate_data_3.R')
 # source('./simulate_data_91.R')
 library(survtmle)
 fit_survtmle <- function(T.tilde, Delta, A, W_df) {
@@ -42,7 +45,8 @@ do_once <- function(n_sim = 2e2) {
   sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   range(df$T.tilde)
-  df <- df[df$T.tilde > 0, ]
+  # df <- df[df$T.tilde > 0, ]
+  df$T.tilde <- df$T.tilde + 1
   k_grid <- 1:max(df$T.tilde)
 
   message("KM")
@@ -52,6 +56,7 @@ do_once <- function(n_sim = 2e2) {
   time1_km <- tail(km_fit$time, km_fit$strata['A=1'])
   surv0_km <- tail(km_fit$surv, km_fit$strata['A=0'])
   time0_km <- tail(km_fit$time, km_fit$strata['A=0'])
+  library(zoo)
   impute_KM <- function(time, km) {
     surv1_km_final <- rep(NA, max(df$T.tilde))
     surv1_km_final[time] <- km
@@ -127,7 +132,6 @@ do_once <- function(n_sim = 2e2) {
   ipcw_fit_0 <- survival_curve$new(t = k_grid, survival = ipcw_fit_0_all)
   ee_fit_1 <- survival_curve$new(t = k_grid, survival = ee_fit_1_all)
   ee_fit_0 <- survival_curve$new(t = k_grid, survival = ee_fit_0_all)
-  library(ggpubr)
   # gg_sl <- ggarrange(
   #   sl_fit$density_failure_1$display(type = "survival", W = df$W),
   #   sl_fit$density_failure_0$display(type = "survival", W = df$W),
@@ -242,48 +246,39 @@ do_once <- function(n_sim = 2e2) {
   survival_truth_1 <- survival_curve$new(t = k_grid, survival = simulated$true_surv1(k_grid))
   survival_truth_0 <- survival_curve$new(t = k_grid, survival = simulated$true_surv0(k_grid))
 
-  df_entropy_moss_1 <- evaluate_metric$new(
-    survival = moss_fit_1, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_sl_1 <- evaluate_metric$new(
-    survival = sl_density_failure_1_marginal, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_ipcw_1 <- evaluate_metric$new(
-    survival = ipcw_fit_1, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_ee_1 <- evaluate_metric$new(
-    survival = ee_fit_1, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_tmle_1 <- evaluate_metric$new(
-    survival = tmle_fit_1, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_km_1 <- evaluate_metric$new(
-    survival = km_fit_1, survival_truth = survival_truth_1
-  # )$evaluate_cross_entropy()
-  )$evaluate_mse()
-  df_entropy_moss_1$method <- "MOSS"
-  df_entropy_sl_1$method <- "super learner"
-  df_entropy_ipcw_1$method <- "IPCW"
-  df_entropy_ee_1$method <- "EE"
-  df_entropy_tmle_1$method <- "TMLE"
-  df_entropy_km_1$method <- "KM"
-  df_plot <- rbind(
-    df_entropy_moss_1,
-    df_entropy_sl_1,
-    df_entropy_ipcw_1,
-    df_entropy_ee_1,
-    df_entropy_tmle_1,
-    df_entropy_km_1
+  is_monotone_tmle <- all(diff(as.numeric(tmle_fit_1$survival)) <= 0)
+  is_monotone_ipcw <- all(diff(as.numeric(ipcw_fit_1$survival)) <= 0)
+  is_monotone_ee <- all(diff(as.numeric(ee_fit_1$survival)) <= 0)
+  df_curve_sl1 <- sl_density_failure_1_marginal$create_ggplot_df()
+  df_curve_tmle1 <- tmle_fit_1$create_ggplot_df()
+  df_curve_moss1 <- moss_fit_1$create_ggplot_df()
+  df_curve_km1 <- km_fit_1$create_ggplot_df()
+  df_curve_ipcw1 <- ipcw_fit_1$create_ggplot_df()
+  df_curve_ee1 <- ee_fit_1$create_ggplot_df()
+  df_curve_sl1$method <- "super learner"
+  df_curve_tmle1$method <- "TMLE"
+  df_curve_moss1$method <- "MOSS"
+  df_curve_km1$method <- "KM"
+  df_curve_ipcw1$method <- "IPCW"
+  df_curve_ee1$method <- "EE"
+  df_curve <- rbind(
+    df_curve_sl1,
+    df_curve_tmle1,
+    df_curve_moss1,
+    df_curve_km1,
+    df_curve_ipcw1,
+    df_curve_ee1
   )
-  return(df_plot)
+  # if (!is_monotone_tmle & !is_monotone_ipcw & !is_monotone_ee) {
+  if (!is_monotone_tmle & !is_monotone_ee) {
+  # if (!is_monotone_tmle) {
+    return(df_curve)
+  } else {
+    return(NULL)
+  }
 }
 
-N_SIMULATION = 1e2
+N_SIMULATION = 2e1
 # N_SIMULATION = 8
 library(foreach)
 # library(Rmpi)
@@ -298,9 +293,8 @@ nw <- parallel:::detectCores()  # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-# n_sim_grid <- c(50, 1e2)
-n_sim_grid <- c(1e2, 3e2)
-# n_sim_grid <- c(50, 1e2, 3e2, 5e2)
+# n_sim_grid <- c(1e2)
+n_sim_grid <- c(5e2)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
@@ -311,14 +305,30 @@ df_metric <- foreach(
 ) %:%
   foreach(it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = 'remove') %dopar% {
   df <- do_once(n_sim = n_sim)
-  df$id_mcmc <- it2
-  df$n <- n_sim
-  return(df)
+  if (!is.null(df)) {
+    df$id_mcmc <- it2
+    # df$n <- n_sim
+    return(df)
+  } else {
+    return(NULL)
+  }
 }
-table(df_metric$id_mcmc)
-
-save(df_metric, file = 'df_metric.rda')
+unique(df_metric$id_mcmc)
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+gglist <- list()
+for (idx in unique(df_metric$id_mcmc)) {
+  gg <- ggplot(df_metric %>% filter(id_mcmc == idx), aes(t, s, color = method)) +
+    geom_line() +
+    theme_bw() +
+    theme(legend.position = "bottom")
+  gglist <- c(gglist, list(gg))
+}
+gg_panel <- ggarrange(plotlist = gglist, legend = 'bottom')
+ggpubr::ggexport(plotlist = gglist, filename = 'panel.pdf', width = 4, height = 4)
 
 # shut down for memory
 # closeCluster(cl)
+# mpi.quit()
 stopCluster(cl)

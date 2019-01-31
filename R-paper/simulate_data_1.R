@@ -7,14 +7,12 @@ simulate_data <- function(n_sim = 2e2) {
     node("A", distr = "rbinom", size = 1, prob = .4 + .5*as.numeric(W > .75)) +
     node("Trexp", distr = "rlnorm", meanlog = 2 - 1*W + 1*A, sdlog = .01) +
     node("Cweib", distr = "rconst", const = 200) +
-    # node("T", distr = "rconst", const = ceiling(Trexp*2)) +
-    # node("C", distr = "rconst", const = ceiling(Cweib*2)) +
     node("T", distr = "rconst", const = round(Trexp*1)) +
     node("C", distr = "rconst", const = round(Cweib*1)) +
     # Observed random variable (follow-up time):
-    node("T.tilde", distr = "rconst", const = ifelse(T <= C , T, C)) +
+    node("T.tilde", distr = "rconst", const = ifelse(T <= C, T, C)) +
     # Observed random variable (censoring indicator, 1 - failure event, 0 - censored):
-    node("Delta", distr = "rconst", const = ifelse(T <= C , 1, 0))
+    node("Delta", distr = "rconst", const = ifelse(T <= C, 1, 0))
   setD <- set.DAG(D)
   dat <- sim(setD, n = n_sim)
   # only grab ID, W's, A, T.tilde, Delta
@@ -23,7 +21,9 @@ simulate_data <- function(n_sim = 2e2) {
 
   # input: scalar q, W vector. computes for all W, the S(q|A,W)
 
-  true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {1 - plnorm(q, meanlog = 2 - 1*w + 1*A, sdlog = .01)})
+  true_surv_one <- function(q, W, A = 1) sapply(W, function(w) {
+    1 - plnorm(q, meanlog = 2 - 1*w + 1*A, sdlog = .01)
+  })
   # input: vector q. mean(S(q|A,W)|A), average out W. loop over q
   true_surv <- function(q_grid, surv_fn, A) {
     W_grid <- seq(0, 1.5, .01)
