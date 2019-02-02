@@ -2,11 +2,11 @@ library(survival)
 library(MOSS)
 library(ggpubr)
 # simulate data
-# source('./simulate_data_0.R')
-# source('./simulate_data_1.R')
-source('./simulate_data_2.R')
-# source('./simulate_data_3.R')
-# source('./simulate_data_91.R')
+# source("./simulate_data_0.R")
+# source("./simulate_data_1.R")
+source("./simulate_data_2.R")
+# source("./simulate_data_3.R")
+# source("./simulate_data_91.R")
 library(survtmle)
 fit_survtmle <- function(T.tilde, Delta, A, W_df) {
   t_0 <- max(T.tilde)
@@ -15,9 +15,9 @@ fit_survtmle <- function(T.tilde, Delta, A, W_df) {
     ftype = Delta,
     trt = A,
     adjustVars = W_df,
-    SL.trt = c("SL.mean", 'SL.glm', 'SL.gam'),
-    SL.ftime = c("SL.mean", 'SL.glm', 'SL.gam'),
-    SL.ctime = c("SL.mean", 'SL.glm', 'SL.gam'),
+    SL.trt = c("SL.mean", "SL.glm", "SL.gam"),
+    SL.ftime = c("SL.mean", "SL.glm", "SL.gam"),
+    SL.ctime = c("SL.mean", "SL.glm", "SL.gam"),
     method = "hazard",
     returnIC = TRUE,
     verbose = FALSE
@@ -37,8 +37,8 @@ fit_survtmle <- function(T.tilde, Delta, A, W_df) {
   rownames(est_only) <- names_groups
   colnames(est_only) <- paste0("t", seq_len(ncol(est_only)))
 
-  s_0 <- 1 - as.numeric(est_only[1,])
-  s_1 <- 1 - as.numeric(est_only[2,])
+  s_0 <- 1 - as.numeric(est_only[1, ])
+  s_1 <- 1 - as.numeric(est_only[2, ])
   return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
 }
 do_once <- function(n_sim = 2e2) {
@@ -56,10 +56,10 @@ do_once <- function(n_sim = 2e2) {
   message("KM")
   n_sample <- nrow(df)
   km_fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
-  surv1_km <- tail(km_fit$surv, km_fit$strata['A=1'])
-  time1_km <- tail(km_fit$time, km_fit$strata['A=1'])
-  surv0_km <- tail(km_fit$surv, km_fit$strata['A=0'])
-  time0_km <- tail(km_fit$time, km_fit$strata['A=0'])
+  surv1_km <- tail(km_fit$surv, km_fit$strata["A=1"])
+  time1_km <- tail(km_fit$time, km_fit$strata["A=1"])
+  surv0_km <- tail(km_fit$surv, km_fit$strata["A=0"])
+  time0_km <- tail(km_fit$time, km_fit$strata["A=0"])
   library(zoo)
   impute_KM <- function(time, km) {
     surv1_km_final <- rep(NA, max(df$T.tilde))
@@ -181,19 +181,19 @@ do_once <- function(n_sim = 2e2) {
 
   # tmle
   message("tmle")
-  tmle_fit <- tryCatch(
-    {
-      tmle_fit <- fit_survtmle(
-        T.tilde = df$T.tilde,
-        Delta = df$Delta,
-        A = df$A,
-        W_df = data.frame(df[, c("W", "W1")])
-      )
-    },
-    error = function(cond) {
-      message("tmle error")
-      NULL
-  })
+  tmle_fit <- tryCatch({
+    tmle_fit <- fit_survtmle(
+      T.tilde = df$T.tilde,
+      Delta = df$Delta,
+      A = df$A,
+      W_df = data.frame(df[, c("W", "W1")])
+    )
+  },
+  error = function(cond) {
+    message("tmle error")
+    NULL
+  }
+  )
   if (is.null(tmle_fit)) {
     tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
     tmle_fit_0 <- sl_density_failure_0_marginal$clone(deep = TRUE)
@@ -307,7 +307,7 @@ do_once <- function(n_sim = 2e2) {
 }
 
 # N_SIMULATION = 1e1
-N_SIMULATION = 1e3
+N_SIMULATION <- 1e3
 library(foreach)
 # library(Rmpi)
 # library(doMPI)
@@ -317,7 +317,7 @@ library(foreach)
 
 library(doSNOW)
 library(tcltk)
-nw <- parallel:::detectCores()  # number of workers
+nw <- parallel:::detectCores() # number of workers
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
@@ -326,22 +326,22 @@ n_sim_grid <- c(1e2, 1e3)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
-  .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
+  .packages = c("R6", "MOSS", "survtmle", "survival"),
   .inorder = FALSE,
-  .errorhandling = 'remove',
+  .errorhandling = "remove",
   .verbose = TRUE
 ) %:%
   foreach(
-    it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = 'remove'
+    it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = "remove"
   ) %dopar% {
     df <- do_once(n_sim = n_sim)
     df$id_mcmc <- it2
     df$n <- n_sim
     return(df)
-}
+  }
 table(df_metric$id_mcmc)
 
-save(df_metric, file = 'df_metric.rda')
+save(df_metric, file = "df_metric.rda")
 
 # shut down for memory
 # closeCluster(cl)
