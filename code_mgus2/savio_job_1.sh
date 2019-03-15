@@ -5,7 +5,7 @@
 #SBATCH -p savio2
 ##SBATCH -p savio2_bigmem
 ##SBATCH --qos=savio_lowprio
-#SBATCH --nodes 5
+#SBATCH --nodes 6
 ##SBATCH --mem-per-cpu 5G
 #SBATCH --exclusive
 #SBATCH -t 12:00:00
@@ -18,4 +18,4 @@
 module load r/3.5.1
 module load r-packages
 module load openmpi
-mpirun R CMD BATCH --no-save scenario_fix_t.R
+mpirun R CMD BATCH --no-save play.R

@@ -216,7 +216,8 @@ do_once <- function(n_sim = 2e2) {
     A_intervene = 1,
     k_grid = k_grid
   )
-  psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(epsilon = 1e-2, verbose = FALSE)
+  # psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(epsilon = 1e-2, verbose = FALSE)
+  psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(epsilon = 1e-2, verbose = T)
   moss_hazard_fit_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_1)
 
   # evaluate against truth
@@ -309,19 +310,20 @@ do_once <- function(n_sim = 2e2) {
 # N_SIMULATION = 1e1
 N_SIMULATION <- 1e3
 library(foreach)
-# library(Rmpi)
-# library(doMPI)
-# cl = startMPIcluster()
-# registerDoMPI(cl)
-# clusterSize(cl) # just to check
+library(Rmpi)
+library(doMPI)
+cl = startMPIcluster()
+registerDoMPI(cl)
+clusterSize(cl) # just to check
 
-library(doSNOW)
-library(tcltk)
-nw <- parallel:::detectCores() # number of workers
-cl <- makeSOCKcluster(nw)
-registerDoSNOW(cl)
+# library(doSNOW)
+# library(tcltk)
+# nw <- parallel:::detectCores() # number of workers
+# cl <- makeSOCKcluster(nw)
+# registerDoSNOW(cl)
 
-n_sim_grid <- c(1e2, 1e3)
+n_sim_grid <- c(1e2)
+# n_sim_grid <- c(1e2, 1e3)
 # n_sim_grid <- c(1e2, 1e4)
 df_metric <- foreach(
   n_sim = n_sim_grid,
@@ -344,9 +346,9 @@ table(df_metric$id_mcmc)
 save(df_metric, file = "df_metric.rda")
 
 # shut down for memory
-# closeCluster(cl)
-# mpi.quit()
-stopCluster(cl)
+closeCluster(cl)
+mpi.quit()
+# stopCluster(cl)
 
 # plot_fit <- function() {
 #   ipcw_fit_1_ci <- ipcw_fit_1$ci(

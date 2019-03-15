@@ -87,34 +87,61 @@ df_mse_joined <- dplyr::left_join(df_mse, df_mse_tmle, by = c("t", "n"))
 df_mse_joined <- df_mse_joined %>% mutate(re = mse.y / mse.x, method = method.x)
 gg1 <- ggplot(df_mse, aes(x = t, y = bias, color = method)) +
   geom_line() +
-  # scale_y_log10() +
-  facet_wrap(n ~ ., nrow = 1)
+  geom_hline(yintercept = 0, lty = 3) +
+  ylab("Bias") +
+  facet_wrap(n ~ ., nrow = 1) +
+  theme_bw()
 gg2 <- ggplot(df_mse, aes(x = t, y = variance, color = method)) +
   geom_line() +
+  scale_y_log10() +
+  ylab("Variance") +
   # ylim(0, 1) +
-  # scale_y_log10() +
-  facet_wrap(n ~ ., nrow = 1)
+  facet_wrap(n ~ ., nrow = 1) +
+  theme_bw()
 gg3 <- ggplot(df_mse, aes(x = t, y = mse, color = method)) +
   geom_line() +
+  ylab("MSE") +
+  scale_y_log10() +
   # ylim(0, 1) +
-  # scale_y_log10() +
-  facet_wrap(n ~ ., nrow = 1)
+  facet_wrap(n ~ ., nrow = 1) +
+  theme_bw()
+
+ymax <- quantile(df_mse_joined$re[!is.na(df_mse_joined$re)], 0.99)
 gg3_2 <- ggplot(df_mse_joined, aes(x = t, y = re, color = method)) +
   geom_line() +
-  # ylim(0, 3) +
-  facet_wrap(n ~ ., nrow = 1)
+  ylim(0, ymax) +
+  ylab("Relative Efficiency") +
+  facet_wrap(n ~ ., nrow = 1) +
+  theme_bw()
 gg4 <- ggplot(df_mse, aes(x = t, y = cnt, color = method)) +
   geom_line() +
-  facet_wrap(n ~ ., nrow = 1)
+  ylab("Number of samples") +
+  facet_wrap(n ~ ., nrow = 1) +
+  theme_bw()
 gg_out1 <- ggarrange(
-  gg1, gg2, gg3, gg3_2, gg4, nrow = 5, common.legend = TRUE, legend = 'bottom'
+  gg1,
+  gg2,
+  gg3,
+  gg3_2,
+  gg4,
+  nrow = 5,
+  common.legend = TRUE,
+  legend = 'bottom'
 )
 
-gg5 <- ggplot(df_metric, aes(x = bias * sqrt(n), color = method)) +
+vals <- df_metric$bias * sqrt(df_metric$n)
+xlims <- quantile(vals[!is.na(vals)], c(0.025, 0.975))
+rootroot <- function(x) x^(1/4)
+irootroot <- function(x) x^4
+gg5 <- ggplot(
+  df_metric %>% filter(t %% 10 == 1 & t <= 50),
+  aes(x = bias * sqrt(n), color = method)
+) +
   geom_density() +
   geom_vline(xintercept = 0, lty = 2) +
-  # xlim(-5, 5) +
-  # xlim(-1, 1) +
+  xlim(xlims) +
+  # scale_y_continuous(trans=scales::trans_new("sq", rootroot, irootroot)) +
+  ylim(c(0, 10)) +
   facet_grid(t ~ n)
 
 ggsave(gg_out1, filename = "./output/mse_panel1.png", width = 10, height = 10)
