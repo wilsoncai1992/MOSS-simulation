@@ -13,9 +13,10 @@ do_once <- function(df_train, save_plot = FALSE) {
   k_grid <- 1:max(T_tilde)
 
   library(MOSS)
-  sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam")
-  sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
-  sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
+  sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
+  sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
+  sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
+
 
   sl_fit <- MOSS::initial_sl_fit(
     ftime = T_tilde,
@@ -32,6 +33,37 @@ do_once <- function(df_train, save_plot = FALSE) {
   # WILSON hack no data is t_tilde = 2
   sl_fit$density_failure_1$t <- k_grid
   sl_fit$density_failure_0$t <- k_grid
+
+  sl_density_failure_1_marginal <- sl_fit$density_failure_1$clone(deep = TRUE)
+  sl_density_failure_0_marginal <- sl_fit$density_failure_0$clone(deep = TRUE)
+  sl_density_failure_1_marginal$survival <- matrix(colMeans(sl_density_failure_1_marginal$survival), nrow = 1)
+  sl_density_failure_0_marginal$survival <- matrix(colMeans(sl_density_failure_0_marginal$survival), nrow = 1)
+
+  g_parametric <- c("SL.mean", "SL.glm")
+  censor_parametric <- c("SL.mean", "SL.glm")
+  failure_parametric <- c("SL.mean", "SL.glm")
+  parametric_fit <- MOSS::initial_sl_fit(
+    ftime = T_tilde,
+    ftype = Delta,
+    trt = treatment,
+    adjustVars = data.frame(df_train[, W_name]),
+    t_0 = max(T_tilde),
+    SL.trt = g_parametric,
+    SL.ctime = censor_parametric,
+    SL.ftime = failure_parametric
+  )
+  parametric_fit$density_failure_1$hazard_to_survival()
+  parametric_fit$density_failure_0$hazard_to_survival()
+  parametric_fit$density_failure_1$t <- k_grid
+  parametric_fit$density_failure_0$t <- k_grid
+  parametric_failure_1_marginal <- parametric_fit$density_failure_1$clone(deep = TRUE)
+  parametric_failure_0_marginal <- parametric_fit$density_failure_0$clone(deep = TRUE)
+  parametric_failure_1_marginal$survival <- matrix(
+    colMeans(parametric_failure_1_marginal$survival), nrow = 1
+  )
+  parametric_failure_0_marginal$survival <- matrix(
+    colMeans(parametric_failure_0_marginal$survival), nrow = 1
+  )
 
   library(ggplot2)
   df_plots <- list()
@@ -128,10 +160,6 @@ do_once <- function(df_train, save_plot = FALSE) {
   ee_fit_1 <- survival_curve$new(t = k_grid, survival = ee_fit_1_all)
   ee_fit_0 <- survival_curve$new(t = k_grid, survival = ee_fit_0_all)
 
-  sl_density_failure_1_marginal <- sl_fit$density_failure_1$clone(deep = TRUE)
-  sl_density_failure_0_marginal <- sl_fit$density_failure_0$clone(deep = TRUE)
-  sl_density_failure_1_marginal$survival <- matrix(colMeans(sl_density_failure_1_marginal$survival), nrow = 1)
-  sl_density_failure_0_marginal$survival <- matrix(colMeans(sl_density_failure_0_marginal$survival), nrow = 1)
 
   source('../fit_survtmle.R')
   message("tmle")
@@ -140,7 +168,10 @@ do_once <- function(df_train, save_plot = FALSE) {
         T.tilde = T_tilde,
         Delta = Delta,
         A = treatment,
-        W_df = data.frame(df_train[, W_name])
+        W_df = data.frame(df_train[, W_name]),
+        SL.trt = g_parametric,
+        SL.ctime = censor_parametric,
+        SL.ftime = failure_parametric
       )
     },
     error = function(cond) {
@@ -173,7 +204,7 @@ do_once <- function(df_train, save_plot = FALSE) {
     k_grid = k_grid
   )
   psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(
-    epsilon = 1e-3, max_num_interation = 2e1, verbose = T
+    epsilon = 1e-3, max_num_interation = 3e1, verbose = TRUE
   )
   moss_hazard_fit_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_1)
 
@@ -189,7 +220,7 @@ do_once <- function(df_train, save_plot = FALSE) {
     k_grid = k_grid
   )
   psi_moss_hazard_0 <- moss_hazard_fit_0$iterate_onestep(
-    epsilon = 1e-3, max_num_interation = 2e1, verbose = T
+    epsilon = 1e-3, max_num_interation = 3e1, verbose = TRUE
   )
   moss_hazard_fit_0 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_0)
 
@@ -207,7 +238,9 @@ do_once <- function(df_train, save_plot = FALSE) {
     g1W = sl_fit$g1W,
     k_grid = k_grid
   )
-  psi_moss_ate <- moss_hazard_ate_fit$iterate_onestep(epsilon = 5e-2, max_num_interation = 2e1, verbose = T)
+  psi_moss_ate <- moss_hazard_ate_fit$iterate_onestep(
+    epsilon = 5e-2, max_num_interation = 2e1, verbose = TRUE
+  )
   moss_ate_fit <- survival_curve$new(t = k_grid, survival = psi_moss_ate)
 
   # ============================================================================
@@ -221,17 +254,20 @@ do_once <- function(df_train, save_plot = FALSE) {
   df_curve_moss1 <- moss_hazard_fit_1$create_ggplot_df()
   df_curve_ipcw1 <- ipcw_fit_1$create_ggplot_df()
   df_curve_ee1 <- ee_fit_1$create_ggplot_df()
+  df_curve_glm1 <- parametric_failure_1_marginal$create_ggplot_df()
   df_curve_sl1$method <- "super learner"
   df_curve_tmle1$method <- "TMLE"
-  df_curve_moss1$method <- "MOSS"
+  df_curve_moss1$method <- "one-step TMLE"
   df_curve_ipcw1$method <- "IPCW"
   df_curve_ee1$method <- "EE"
+  df_curve_glm1$method <- "linear model"
   df_curve1 <- rbind(
     df_curve_sl1,
     df_curve_tmle1,
     df_curve_moss1,
     df_curve_ipcw1,
-    df_curve_ee1
+    df_curve_ee1,
+    df_curve_glm1
   )
   df_curve1$counterfactual <- "S_{A=1}(t)"
 
@@ -243,17 +279,20 @@ do_once <- function(df_train, save_plot = FALSE) {
   df_curve_moss0 <- moss_hazard_fit_0$create_ggplot_df()
   df_curve_ipcw0 <- ipcw_fit_0$create_ggplot_df()
   df_curve_ee0 <- ee_fit_0$create_ggplot_df()
+  df_curve_glm0 <- parametric_failure_0_marginal$create_ggplot_df()
   df_curve_sl0$method <- "super learner"
   df_curve_tmle0$method <- "TMLE"
-  df_curve_moss0$method <- "MOSS"
+  df_curve_moss0$method <- "one-step TMLE"
   df_curve_ipcw0$method <- "IPCW"
   df_curve_ee0$method <- "EE"
+  df_curve_glm0$method <- "linear model"
   df_curve0 <- rbind(
     df_curve_sl0,
     df_curve_tmle0,
     df_curve_moss0,
     df_curve_ipcw0,
-    df_curve_ee0
+    df_curve_ee0,
+    df_curve_glm0
   )
   df_curve0$counterfactual <- "S_{A=0}(t)"
 
@@ -267,7 +306,7 @@ do_once <- function(df_train, save_plot = FALSE) {
     theme(legend.position = "bottom")
 
   ate_moss <- moss_ate_fit$create_ggplot_df()
-  ate_moss$method <- "MOSS"
+  ate_moss$method <- "one-step TMLE"
   ate_ee <- df_curve_ee1
   ate_ee$s <- ate_ee$s - df_curve_ee0$s
   ate_tmle <- df_curve_tmle1
@@ -276,6 +315,8 @@ do_once <- function(df_train, save_plot = FALSE) {
   ate_ipcw$s <- NA
   ate_sl <- df_curve_sl1
   ate_sl$s <- ate_sl$s - df_curve_sl0$s
+  ate_glm <- df_curve_glm1
+  ate_glm$s <- ate_glm$s - df_curve_glm0$s
 
   # compute ci
   eic_fit_1 <- eic$new(
@@ -335,7 +376,8 @@ do_once <- function(df_train, save_plot = FALSE) {
   ate_tmle$upper <- ate_tmle$lower <- NA
   ate_ipcw$upper <- ate_ipcw$lower <- NA
   ate_sl$upper <- ate_sl$lower <- NA
-  df_ate <- rbind(ate_moss, ate_ee, ate_tmle, ate_ipcw, ate_sl)
+  ate_glm$upper <- ate_glm$lower <- NA
+  df_ate <- rbind(ate_moss, ate_ee, ate_tmle, ate_ipcw, ate_sl, ate_glm)
 
   gg_ate <- ggplot(
       data = df_ate,
@@ -368,11 +410,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     is_monotone_ipcw0,
     is_monotone_ee0
   )
-  # return(list(
-  #   panel1 = gg_panel,
-  #   panel2 = panel2,
-  #   df_stats = df_stats
-  # ))
   return(df_stats)
 }
 do_once(df_train, save_plot = TRUE)
@@ -403,7 +440,7 @@ do_once(df_train, save_plot = TRUE)
 #   .packages = c("R6", "MOSS", "survtmle", "dplyr"),
 #   .inorder = FALSE,
 #   .errorhandling = "remove",
-#   .verbose = TRUE
+#   .verbose = TRUERUE
 # ) %:%
 #   foreach(
 #     i = 1:N_REPEAT, .combine = rbind, .errorhandling = "remove"
