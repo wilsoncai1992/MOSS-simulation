@@ -2,6 +2,23 @@ t_censor <- 8
 # t_censor <- 12
 # t_censor <- 16
 source("./preprocess.R")
+smooth_2d_function <- function(df_prediction, x = "x", y = "y", z = "z", ...) {
+  # loess_fit <- loess(
+    # df_prediction[, z] ~ df_prediction[, x] + df_prediction[, y], ...
+  # )
+  # df_smoothed <- df_prediction
+  # df_smoothed[, z] <- predict(loess_fit)
+  df_smoothed <- df_prediction
+  range_y <- range(df_smoothed[, y])
+  breaks_y <- seq(range_y[1], range_y[2], length.out = 10)
+  df_smoothed[, y] <- cut(
+    df_smoothed[, y], breaks = breaks_y, right = FALSE, include.lowest = TRUE, ordered_result = TRUE
+  )
+  df_smoothed <- df_smoothed %>%
+    group_by_(x, y) %>%
+    summarise(s = mean(s))
+  return(df_smoothed)
+}
 
 do_once <- function(df_train, save_plot = FALSE) {
   # T_tilde <- df_train$futime
@@ -16,7 +33,6 @@ do_once <- function(df_train, save_plot = FALSE) {
   sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
   sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
   sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
-
 
   sl_fit <- MOSS::initial_sl_fit(
     ftime = T_tilde,
@@ -73,6 +89,10 @@ do_once <- function(df_train, save_plot = FALSE) {
     df_s0 <- sl_fit$density_failure_0$create_ggplot_df(W = W_plot)
     df_c1 <- sl_fit$density_censor_1$create_ggplot_df(W = W_plot)
     df_c0 <- sl_fit$density_censor_0$create_ggplot_df(W = W_plot)
+    df_s1 <- smooth_2d_function(df_s1, x = "t", y = "W", z = "s")
+    df_s0 <- smooth_2d_function(df_s0, x = "t", y = "W", z = "s")
+    df_c1 <- smooth_2d_function(df_c1, x = "t", y = "W", z = "s")
+    df_c0 <- smooth_2d_function(df_c0, x = "t", y = "W", z = "s")
     df_s1$component <- "S_{A=1}(t)"
     df_s0$component <- "S_{A=0}(t)"
     df_c1$component <- "G_{A=1}(t)"
@@ -82,8 +102,18 @@ do_once <- function(df_train, save_plot = FALSE) {
     df_plots <- c(df_plots, list(df_plot))
   }
   df_plots <- do.call(rbind, df_plots)
-  gg_panel <- ggplot(df_plots, aes(x = t, y = round(W, digits = 1), z = s)) +
-    geom_raster(aes(fill = s), interpolate = TRUE) +
+  # reorder the factors of W, after the rbind of data.frames
+  lvls <- levels(factor(df_plots$W))
+  left_bound <- as.numeric(sapply(strsplit(substr(lvls, 2, 10), split = ","), function(x) x[1]))
+  df_plots$W <- factor(df_plots$W, levels = lvls[order(left_bound)], ordered = TRUE)
+  # gg_panel <- ggplot(df_plots, aes(x = t, y = round(W, digits = 1), z = s)) +
+  #   geom_raster(aes(fill = s), interpolate = TRUE) +
+  #   xlim(c(1, max(df_plots$t))) +
+  #   ylab("W") +
+  #   theme_bw() +
+  #   facet_grid(covariate ~ component, scales = 'free_y')
+  gg_panel <- ggplot(df_plots, aes(x = t, y = W, z = s)) +
+    geom_tile(aes(fill = s)) +
     xlim(c(1, max(df_plots$t))) +
     ylab("W") +
     theme_bw() +
@@ -92,8 +122,16 @@ do_once <- function(df_train, save_plot = FALSE) {
 
   denom_1 <- sl_fit$density_censor_1$survival * sl_fit$g1W
   denom_0 <- sl_fit$density_censor_0$survival * (1 - sl_fit$g1W)
-  summary(1 / denom_1)
-  summary(1 / denom_0)
+  library(stargazer)
+
+  tbl_score <- data.frame(1 / denom_1)
+  colnames(tbl_score) <- 1:ncol(tbl_score)
+  stargazer(tbl_score)
+  tbl_score <- data.frame(1 / denom_0)
+  colnames(tbl_score) <- 1:ncol(tbl_score)
+  stargazer(tbl_score)
+  # summary(1 / denom_1)
+  # summary(1 / denom_0)
 
   density_censor_1_truncated <- sl_fit$density_censor_1$clone(deep = TRUE)
   density_censor_0_truncated <- sl_fit$density_censor_0$clone(deep = TRUE)

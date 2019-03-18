@@ -40,7 +40,7 @@ df_train <- df %>%
   # mutate(futime = floor(futime / 20) + 1) %>%
   mutate(ptime = floor(ptime / 20) + 1) %>%
   drop_na()
-# sample_n(1e2)
+  # sample_n(1e2)
 
 # don't analyze t with high censoring probability
 # t_censor <- 8
