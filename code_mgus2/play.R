@@ -55,6 +55,7 @@ do_once <- function(df_train, save_plot = FALSE) {
   sl_density_failure_1_marginal$survival <- matrix(colMeans(sl_density_failure_1_marginal$survival), nrow = 1)
   sl_density_failure_0_marginal$survival <- matrix(colMeans(sl_density_failure_0_marginal$survival), nrow = 1)
 
+  message("parametric initial estimate")
   g_parametric <- c("SL.mean", "SL.glm")
   censor_parametric <- c("SL.mean", "SL.glm")
   failure_parametric <- c("SL.mean", "SL.glm")
@@ -207,9 +208,9 @@ do_once <- function(df_train, save_plot = FALSE) {
         Delta = Delta,
         A = treatment,
         W_df = data.frame(df_train[, W_name]),
-        SL.trt = g_parametric,
-        SL.ctime = censor_parametric,
-        SL.ftime = failure_parametric
+        SL.trt = sl_lib_g,
+        SL.ctime = sl_lib_censor,
+        SL.ftime = sl_lib_failure
       )
     },
     error = function(cond) {
@@ -341,7 +342,8 @@ do_once <- function(df_train, save_plot = FALSE) {
     geom_line() +
     theme_bw() +
     facet_wrap(. ~ counterfactual, ncol = 2) +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") +
+    guides(colour = guide_legend(nrow = 1))
 
   ate_moss <- moss_ate_fit$create_ggplot_df()
   ate_moss$method <- "one-step TMLE"
@@ -426,7 +428,8 @@ do_once <- function(df_train, save_plot = FALSE) {
     geom_line(aes(x = t, y = upper, color = method), lty = 2) +
     geom_hline(yintercept = 0, lty = 4) +
     theme_bw() +
-    theme(legend.position = "bottom")
+    theme(legend.position = "bottom") +
+    guides(colour = guide_legend(nrow = 1))
 
   library(ggpubr)
   panel2 <- ggarrange(
@@ -439,7 +442,7 @@ do_once <- function(df_train, save_plot = FALSE) {
     common.legend = TRUE,
     legend = "bottom"
   )
-  if (save_plot) ggsave(panel2, filename = 'panel2.png', width = 12, height = 5)
+  if (save_plot) ggsave(panel2, filename = 'panel2.png', width = 6, height = 3)
   df_stats <- data.frame(
     is_monotone_tmle1,
     is_monotone_ipcw1,
