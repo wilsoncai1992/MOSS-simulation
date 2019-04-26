@@ -1,5 +1,9 @@
 library(survival)
 library(MOSS)
+library(ggplot2)
+library(dplyr)
+library(ggpubr)
+source("../fit_survtmle.R")
 # simulate data
 # source('./simulate_data_0.R')
 # source('./simulate_data_1.R')
@@ -7,41 +11,12 @@ source('./simulate_data_2.R')
 # source('./simulate_data_3.R')
 # source('./simulate_data_91.R')
 library(survtmle)
-fit_survtmle <- function(T.tilde, Delta, A, W_df) {
-  t_0 <- max(T.tilde)
-  fit <- survtmle(ftime = T.tilde,
-                  ftype = Delta,
-                  trt = A,
-                  adjustVars = W_df,
-                  SL.trt = c("SL.mean", 'SL.glm', 'SL.gam'),
-                  SL.ftime = c("SL.mean", 'SL.glm', 'SL.gam'),
-                  SL.ctime = c("SL.mean", 'SL.glm', 'SL.gam'),
-                  method = "hazard",
-                  returnIC = TRUE,
-                  verbose = FALSE
-  )
-  # extract cumulative incidence at each timepoint
-  tpfit <- timepoints(fit, times = seq_len(t_0))
-  len_groups <- as.numeric(unique(lapply(lapply(tpfit, FUN = `[[`,
-                                                "est"), FUN = length)))
-  names_groups <- unique(lapply(lapply(tpfit, FUN = `[[`, "est"),
-                                FUN = rownames))[[1]]
-  est_only <- t(matrix(unlist(lapply(tpfit, FUN = `[[`, "est")),
-                       ncol = len_groups, byrow = TRUE))
-  est_only <- as.data.frame(est_only)
-  rownames(est_only) <- names_groups
-  colnames(est_only) <- paste0("t", seq_len(ncol(est_only)))
-
-  s_0 <- 1 - as.numeric(est_only[1,])
-  s_1 <- 1 - as.numeric(est_only[2,])
-  return(data.frame(time = 1:t_0, s_0 = s_0, s_1 = s_1))
-}
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
   true_surv <- simulated$true_surv1
 
-  sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam")
+  sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   range(df$T.tilde)
@@ -229,7 +204,10 @@ do_once <- function(n_sim = 2e2) {
         T.tilde = df$T.tilde,
         Delta = df$Delta,
         A = df$A,
-        W_df = data.frame(df[, c("W", "W1")])
+        W_df = data.frame(df[, c("W", "W1")]),
+        SL.trt = sl_lib_g,
+        SL.ctime = sl_lib_censor,
+        SL.ftime = sl_lib_failure
       )
     },
     error = function(cond) {
@@ -294,7 +272,7 @@ cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
 # n_sim_grid <- c(1e2)
-n_sim_grid <- c(5e2)
+# n_sim_grid <- c(1e3)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
@@ -314,9 +292,6 @@ df_metric <- foreach(
   }
 }
 unique(df_metric$id_mcmc)
-library(ggplot2)
-library(dplyr)
-library(ggpubr)
 gglist <- list()
 for (idx in unique(df_metric$id_mcmc)) {
   gg <- ggplot(df_metric %>% filter(id_mcmc == idx), aes(t, s, color = method)) +

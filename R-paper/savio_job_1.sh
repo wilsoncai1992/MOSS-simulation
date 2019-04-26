@@ -5,8 +5,8 @@
 #SBATCH -p savio2
 ##SBATCH -p savio2_bigmem
 ##SBATCH --qos=savio_lowprio
-#SBATCH --nodes 19
-##SBATCH --mem-per-cpu 5G
+#SBATCH --nodes 18
+#SBATCH --mem-per-cpu 6G
 #SBATCH --exclusive
 #SBATCH -t 12:00:00
 #SBATCH --mail-type=all

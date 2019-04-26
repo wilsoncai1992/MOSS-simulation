@@ -1,6 +1,8 @@
+assertthat::assert_that(packageVersion("MOSS") >= "1.1.2")
 library(survival)
 library(MOSS)
 library(ggpubr)
+library(dplyr)
 source("../fit_survtmle.R")
 # simulate data
 # source("./simulate_data_0.R")
@@ -45,14 +47,14 @@ do_once <- function(n_sim = 2e2) {
 
   message("SL")
   sl_fit <- initial_sl_fit(
-    ftime = df$T.tilde,
-    ftype = df$Delta,
-    trt = df$A,
-    adjustVars = data.frame(df[, W_names]),
-    t_0 = max(df$T.tilde),
-    SL.trt = sl_lib_g,
-    SL.ctime = sl_lib_censor,
-    SL.ftime = sl_lib_failure
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    A = df$A,
+    W = data.frame(df[, W_names]),
+    t_max = max(df$T.tilde),
+    sl_treatment = sl_lib_g,
+    sl_censoring = sl_lib_censor,
+    sl_failure = sl_lib_failure
   )
   sl_fit$density_failure_1$hazard_to_survival()
   sl_fit$density_failure_0$hazard_to_survival()
@@ -166,6 +168,7 @@ do_once <- function(n_sim = 2e2) {
   if (is.null(tmle_fit)) {
     tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
     tmle_fit_0 <- sl_density_failure_0_marginal$clone(deep = TRUE)
+    is_tmle1_converge <- FALSE
   } else {
     s_1 <- c(1, tmle_fit$s_1)
     s_1 <- s_1[-length(s_1)]
@@ -173,9 +176,10 @@ do_once <- function(n_sim = 2e2) {
     s_0 <- s_0[-length(s_0)]
     tmle_fit_1 <- survival_curve$new(t = k_grid, survival = s_1)
     tmle_fit_0 <- survival_curve$new(t = k_grid, survival = s_0)
+    is_tmle1_converge <- TRUE
   }
-  message("moss with hazard submodel")
-  moss_hazard_fit <- MOSS_hazard$new(
+  message("moss with l2 submodel")
+  moss_hazard_l2 <- MOSS_hazard$new(
     A = df$A,
     T_tilde = df$T.tilde,
     Delta = df$Delta,
@@ -185,9 +189,16 @@ do_once <- function(n_sim = 2e2) {
     A_intervene = 1,
     k_grid = k_grid
   )
-  # psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(epsilon = 1e-2, verbose = FALSE)
-  psi_moss_hazard_1 <- moss_hazard_fit$iterate_onestep(epsilon = 1e-2, verbose = TRUE)
-  moss_hazard_fit_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_1)
+  moss_hazard_l1 <- moss_hazard_l2$clone(deep = TRUE)
+  psi_moss_l2_1 <- moss_hazard_l2$iterate_onestep(
+    method = "l2", epsilon = 1e-2, verbose = FALSE
+  )
+  moss_hazard_l2_1 <- survival_curve$new(t = k_grid, survival = psi_moss_l2_1)
+
+  psi_moss_hazard_l1_1 <- moss_hazard_l1$iterate_onestep(
+    method = "l1", epsilon = 1e-2, verbose = FALSE
+  )
+  moss_hazard_l1_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_l1_1)
 
   # evaluate against truth
   survival_truth_1 <- survival_curve$new(t = k_grid, survival = simulated$true_surv1(k_grid - 1))
@@ -200,13 +211,23 @@ do_once <- function(n_sim = 2e2) {
   df_entropy_moss_1$metric_name <- "cross_entropy"
   df_mse_moss_1 <- evaluate_moss$evaluate_mse()
   df_mse_moss_1$metric_name <- "mse"
-  evaluate_moss_hazard <- evaluate_metric$new(
-    survival = moss_hazard_fit_1, survival_truth = survival_truth_1
+
+  evaluate_moss_l2 <- evaluate_metric$new(
+    survival = moss_hazard_l2_1, survival_truth = survival_truth_1
   )
-  df_entropy_moss_hazard_1 <- evaluate_moss_hazard$evaluate_cross_entropy()
-  df_entropy_moss_hazard_1$metric_name <- "cross_entropy"
-  df_mse_moss_hazard_1 <- evaluate_moss_hazard$evaluate_mse()
-  df_mse_moss_hazard_1$metric_name <- "mse"
+  df_entropy_moss_l2_1 <- evaluate_moss_l2$evaluate_cross_entropy()
+  df_entropy_moss_l2_1$metric_name <- "cross_entropy"
+  df_mse_moss_l2_1 <- evaluate_moss_l2$evaluate_mse()
+  df_mse_moss_l2_1$metric_name <- "mse"
+
+  evaluate_moss_l1 <- evaluate_metric$new(
+    survival = moss_hazard_l1_1, survival_truth = survival_truth_1
+  )
+  df_entropy_moss_l1_1 <- evaluate_moss_l1$evaluate_cross_entropy()
+  df_entropy_moss_l1_1$metric_name <- "cross_entropy"
+  df_mse_moss_l1_1 <- evaluate_moss_l1$evaluate_mse()
+  df_mse_moss_l1_1$metric_name <- "mse"
+
   evaluate_sl <- evaluate_metric$new(
     survival = sl_density_failure_1_marginal, survival_truth = survival_truth_1
   )
@@ -243,15 +264,17 @@ do_once <- function(n_sim = 2e2) {
   df_mse_km_1 <- evaluate_km$evaluate_mse()
   df_mse_km_1$metric_name <- "mse"
 
-  df_mse_moss_1$method <- "MOSS"
-  df_mse_moss_hazard_1$method <- "MOSS_hazard"
+  df_mse_moss_1$method <- "MOSS_classic"
+  df_mse_moss_l2_1$method <- "MOSS_l2"
+  df_mse_moss_l1_1$method <- "MOSS_l1"
   df_mse_sl_1$method <- "super learner"
   df_mse_ipcw_1$method <- "IPCW"
   df_mse_ee_1$method <- "EE"
   df_mse_tmle_1$method <- "TMLE"
   df_mse_km_1$method <- "KM"
-  df_entropy_moss_1$method <- "MOSS"
-  df_entropy_moss_hazard_1$method <- "MOSS_hazard"
+  df_entropy_moss_1$method <- "MOSS_classic"
+  df_entropy_moss_l2_1$method <- "MOSS_l2"
+  df_entropy_moss_l1_1$method <- "MOSS_l1"
   df_entropy_sl_1$method <- "super learner"
   df_entropy_ipcw_1$method <- "IPCW"
   df_entropy_ee_1$method <- "EE"
@@ -259,24 +282,30 @@ do_once <- function(n_sim = 2e2) {
   df_entropy_km_1$method <- "KM"
   df_plot <- plyr::rbind.fill(
     df_mse_moss_1,
-    df_mse_moss_hazard_1,
+    df_mse_moss_l2_1,
+    df_mse_moss_l1_1,
     df_mse_sl_1,
     df_mse_ipcw_1,
     df_mse_ee_1,
     df_mse_tmle_1,
     df_mse_km_1,
     df_entropy_moss_1,
-    df_entropy_moss_hazard_1,
+    df_entropy_moss_l2_1,
+    df_entropy_moss_l1_1,
     df_entropy_sl_1,
     df_entropy_ipcw_1,
     df_entropy_ee_1,
     df_entropy_tmle_1,
     df_entropy_km_1
   )
+  # track if the estimators are monotone
+  df_plot$is_monotone_tmle1 <- all(diff(as.numeric(tmle_fit_1$survival)) <= 0)
+  df_plot$is_monotone_ee1 <- all(diff(as.numeric(ee_fit_1$survival)) <= 0)
+  df_plot$is_tmle1_converge <- is_tmle1_converge
   return(df_plot)
 }
 
-# N_SIMULATION = 1e1
+# N_SIMULATION = 2
 N_SIMULATION <- 1e3
 library(foreach)
 library(Rmpi)
@@ -293,7 +322,6 @@ clusterSize(cl) # just to check
 
 # n_sim_grid <- c(1e2)
 n_sim_grid <- c(1e2, 1e3)
-# n_sim_grid <- c(1e2, 1e4)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
@@ -312,115 +340,22 @@ df_metric <- foreach(
   }
 table(df_metric$id_mcmc)
 
-save(df_metric, file = "df_metric.rda")
+df_monotone <- df_metric %>%
+  select(n, id_mcmc, is_monotone_tmle1, is_monotone_ee1, is_tmle1_converge)
+df_monotone <- df_monotone[!duplicated(df_monotone), ]
+df_monotone_summary <- df_monotone %>%
+  group_by(n) %>%
+  summarise(
+    cnt = dplyr::n(),
+    is_monotone_tmle1 = sum(is_monotone_tmle1 * is_tmle1_converge) / sum(is_tmle1_converge),
+    is_monotone_ee1 = mean(is_monotone_ee1),
+    is_tmle1_converge = mean(is_tmle1_converge)
+  )
+
+save(df_metric, df_monotone, df_monotone_summary, file = "df_metric.rda")
 
 # shut down for memory
 closeCluster(cl)
 mpi.quit()
 # stopCluster(cl)
 
-# plot_fit <- function() {
-#   ipcw_fit_1_ci <- ipcw_fit_1$ci(
-#     A = df$A,
-#     T_tilde = df$T_tilde,
-#     Delta = df$Delta,
-#     density_failure = sl_fit$density_failure_1,
-#     density_censor = sl_fit$density_censor_1,
-#     g1W = sl_fit$g1W,
-#     psi_n = ipcw_fit_1$survival,
-#     A_intervene = 1
-#   )
-#   ipcw_fit_0_ci <- ipcw_fit_0$ci(
-#     A = df$A,
-#     T_tilde = df$T_tilde,
-#     Delta = df$Delta,
-#     density_failure = sl_fit$density_failure_0,
-#     density_censor = sl_fit$density_censor_0,
-#     g1W = sl_fit$g1W,
-#     psi_n = ipcw_fit_0$survival,
-#     A_intervene = 0
-#   )
-#   ee_fit_1_ci <- ee_fit_1$ci(
-#     A = df$A,
-#     T_tilde = df$T_tilde,
-#     Delta = df$Delta,
-#     density_failure = sl_fit$density_failure_1,
-#     density_censor = sl_fit$density_censor_1,
-#     g1W = sl_fit$g1W,
-#     psi_n = ee_fit_1$survival,
-#     A_intervene = 1
-#   )
-#   ee_fit_0_ci <- ee_fit_0$ci(
-#     A = df$A,
-#     T_tilde = df$T_tilde,
-#     Delta = df$Delta,
-#     density_failure = sl_fit$density_failure_0,
-#     density_censor = sl_fit$density_censor_0,
-#     g1W = sl_fit$g1W,
-#     psi_n = ee_fit_0$survival,
-#     A_intervene = 0
-#   )
-
-#   gg_sl <- ggarrange(
-#     sl_fit$density_failure_1$display(type = "survival", W = df$W),
-#     sl_fit$density_failure_0$display(type = "survival", W = df$W),
-#     ncol = 2,
-#     labels = "AUTO",
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-#   gg_sl2 <- ggarrange(
-#     sl_density_failure_1_marginal$display(type = "survival"),
-#     sl_density_failure_0_marginal$display(type = "survival"),
-#     ncol = 2,
-#     labels = "AUTO",
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-#   gg_ipcw <- ggarrange(
-#     ipcw_fit_1$display(type = "survival"),
-#     ipcw_fit_0$display(type = "survival"),
-#     ncol = 2,
-#     labels = "AUTO",
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-#   gg_ee <- ggarrange(
-#     ee_fit_1$display(type = "survival"),
-#     ee_fit_0$display(type = "survival"),
-#     ncol = 2,
-#     labels = "AUTO",
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-
-#   moss_fit_1_ci <- moss_fit_1$ci(
-#     A = df$A,
-#     T_tilde = df$T_tilde,
-#     Delta = df$Delta,
-#     density_failure = moss_fit$density_failure,
-#     density_censor = moss_fit$density_censor,
-#     g1W = sl_fit$g1W,
-#     psi_n = moss_fit_1$survival,
-#     A_intervene = 1
-#   )
-
-#   gg_moss <- ggarrange(
-#     moss_fit_1$display(type = "survival"),
-#     moss_fit_0$display(type = "survival"),
-#     ncol = 2,
-#     labels = "AUTO",
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-#   ggarrange(
-#     gg_sl,
-#     gg_sl2,
-#     gg_ipcw,
-#     gg_ee,
-#     gg_moss,
-#     nrow = 5,
-#     common.legend = TRUE,
-#     legend = "bottom"
-#   )
-# }

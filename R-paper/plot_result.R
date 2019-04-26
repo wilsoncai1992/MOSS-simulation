@@ -67,7 +67,10 @@ library(ggpubr)
 
 
 load("./output/df_metric.rda")
-df_metric <- df_metric %>% filter(metric_name == "mse")
+df_metric <- df_metric %>%
+  filter(metric_name == "mse") %>%
+  filter(method != "MOSS")
+df_metric$method[df_metric$method == "MOSS_hazard"] <- "one-step TMLE"
 df_mse <- df_metric %>%
   group_by(method, t, n) %>%
   summarise(
@@ -90,7 +93,8 @@ gg1 <- ggplot(df_mse, aes(x = t, y = bias, color = method)) +
   geom_hline(yintercept = 0, lty = 3) +
   ylab("Bias") +
   facet_wrap(n ~ ., nrow = 1) +
-  theme_bw()
+  theme_bw() +
+  guides(colour = guide_legend(nrow = 1))
 gg2 <- ggplot(df_mse, aes(x = t, y = variance, color = method)) +
   geom_line() +
   scale_y_log10() +
@@ -142,7 +146,10 @@ gg5 <- ggplot(
   xlim(xlims) +
   # scale_y_continuous(trans=scales::trans_new("sq", rootroot, irootroot)) +
   ylim(c(0, 10)) +
-  facet_grid(t ~ n)
+  facet_grid(t ~ n) +
+  theme_bw() +
+  theme(legend.position="bottom") +
+  guides(colour = guide_legend(nrow = 1))
 
-ggsave(gg_out1, filename = "./output/mse_panel1.png", width = 10, height = 10)
-ggsave(gg5, filename = "./output/mse_panel2.png", width = 10, height = 10)
+ggsave(gg_out1, filename = "./output/mse_panel1.png", width = 8, height = 8)
+ggsave(gg5, filename = "./output/mse_panel2.png", width = 8, height = 8)
