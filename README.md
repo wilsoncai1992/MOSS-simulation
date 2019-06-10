@@ -3,7 +3,7 @@
 
 ## Pre-requisites
 
-```
+```R
 # MOSS package version >= 1.1.2
 devtools::install_github("wilsoncai1992/MOSS")
 install.packages("survtmle")
