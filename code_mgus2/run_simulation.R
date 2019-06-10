@@ -1,18 +1,11 @@
-t_censor <- 8
-# t_censor <- 12
-# t_censor <- 16
 source("./preprocess.R")
 smooth_2d_function <- function(df_prediction, x = "x", y = "y", z = "z", ...) {
-  # loess_fit <- loess(
-    # df_prediction[, z] ~ df_prediction[, x] + df_prediction[, y], ...
-  # )
-  # df_smoothed <- df_prediction
-  # df_smoothed[, z] <- predict(loess_fit)
   df_smoothed <- df_prediction
   range_y <- range(df_smoothed[, y])
   breaks_y <- seq(range_y[1], range_y[2], length.out = 10)
   df_smoothed[, y] <- cut(
-    df_smoothed[, y], breaks = breaks_y, right = FALSE, include.lowest = TRUE, ordered_result = TRUE
+    df_smoothed[, y],
+    breaks = breaks_y, right = FALSE, include.lowest = TRUE, ordered_result = TRUE
   )
   df_smoothed <- df_smoothed %>%
     group_by_(x, y) %>%
@@ -21,8 +14,6 @@ smooth_2d_function <- function(df_prediction, x = "x", y = "y", z = "z", ...) {
 }
 
 do_once <- function(df_train, save_plot = FALSE) {
-  # T_tilde <- df_train$futime
-  # Delta <- df_train$death
   T_tilde <- df_train$ptime
   Delta <- df_train$pstat
   treatment <- df_train[, A_name]
@@ -46,7 +37,7 @@ do_once <- function(df_train, save_plot = FALSE) {
   )
   sl_fit$density_failure_1$hazard_to_survival()
   sl_fit$density_failure_0$hazard_to_survival()
-  # WILSON hack no data is t_tilde = 2
+  # hack when no data has T_tilde = 2
   sl_fit$density_failure_1$t <- k_grid
   sl_fit$density_failure_0$t <- k_grid
 
@@ -76,10 +67,12 @@ do_once <- function(df_train, save_plot = FALSE) {
   parametric_failure_1_marginal <- parametric_fit$density_failure_1$clone(deep = TRUE)
   parametric_failure_0_marginal <- parametric_fit$density_failure_0$clone(deep = TRUE)
   parametric_failure_1_marginal$survival <- matrix(
-    colMeans(parametric_failure_1_marginal$survival), nrow = 1
+    colMeans(parametric_failure_1_marginal$survival),
+    nrow = 1
   )
   parametric_failure_0_marginal$survival <- matrix(
-    colMeans(parametric_failure_0_marginal$survival), nrow = 1
+    colMeans(parametric_failure_0_marginal$survival),
+    nrow = 1
   )
 
   library(ggplot2)
@@ -107,19 +100,14 @@ do_once <- function(df_train, save_plot = FALSE) {
   lvls <- levels(factor(df_plots$W))
   left_bound <- as.numeric(sapply(strsplit(substr(lvls, 2, 10), split = ","), function(x) x[1]))
   df_plots$W <- factor(df_plots$W, levels = lvls[order(left_bound)], ordered = TRUE)
-  # gg_panel <- ggplot(df_plots, aes(x = t, y = round(W, digits = 1), z = s)) +
-  #   geom_raster(aes(fill = s), interpolate = TRUE) +
-  #   xlim(c(1, max(df_plots$t))) +
-  #   ylab("W") +
-  #   theme_bw() +
-  #   facet_grid(covariate ~ component, scales = 'free_y')
+
   gg_panel <- ggplot(df_plots, aes(x = t, y = W, z = s)) +
     geom_tile(aes(fill = s)) +
     xlim(c(1, max(df_plots$t))) +
     ylab("W") +
     theme_bw() +
-    facet_grid(covariate ~ component, scales = 'free_y')
-  if (save_plot) ggsave(gg_panel, filename = 'panel1.png', width = 8, height = 6)
+    facet_grid(covariate ~ component, scales = "free_y")
+  if (save_plot) ggsave(gg_panel, filename = "panel1.png", width = 8, height = 6)
 
   denom_1 <- sl_fit$density_censor_1$survival * sl_fit$g1W
   denom_0 <- sl_fit$density_censor_0$survival * (1 - sl_fit$g1W)
@@ -131,17 +119,12 @@ do_once <- function(df_train, save_plot = FALSE) {
   tbl_score <- data.frame(1 / denom_0)
   colnames(tbl_score) <- 1:ncol(tbl_score)
   stargazer(tbl_score)
-  # summary(1 / denom_1)
-  # summary(1 / denom_0)
 
   density_censor_1_truncated <- sl_fit$density_censor_1$clone(deep = TRUE)
   density_censor_0_truncated <- sl_fit$density_censor_0$clone(deep = TRUE)
   matrix_g1W <- do.call(
     cbind, rep(list(sl_fit$g1W), ncol(sl_fit$density_censor_1$survival))
   )
-  # threshold <- 0.02
-  # threshold <- 0.01
-  threshold <- 1e-5
   density_censor_1_truncated$survival[denom_1 <= threshold] <- (threshold / matrix_g1W)[denom_1 <= threshold]
   density_censor_0_truncated$survival[denom_0 <= threshold] <- (threshold / (1 - matrix_g1W))[denom_0 <= threshold]
   denom_1_truncated <- density_censor_1_truncated$survival * sl_fit$g1W
@@ -156,7 +139,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_1,
-    # density_censor = sl_fit$density_censor_1,
     density_censor = density_censor_1_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 1
@@ -167,7 +149,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_0,
-    # density_censor = sl_fit$density_censor_0,
     density_censor = density_censor_0_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 0
@@ -178,7 +159,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_1,
-    # density_censor = sl_fit$density_censor_1,
     density_censor = density_censor_1_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 1
@@ -189,7 +169,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_0,
-    # density_censor = sl_fit$density_censor_0,
     density_censor = density_censor_0_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 0
@@ -200,23 +179,23 @@ do_once <- function(df_train, save_plot = FALSE) {
   ee_fit_0 <- survival_curve$new(t = k_grid, survival = ee_fit_0_all)
 
 
-  source('../fit_survtmle.R')
+  source("../fit_survtmle.R")
   message("tmle")
   tmle_fit <- tryCatch({
-      tmle_fit <- fit_survtmle(
-        T.tilde = T_tilde,
-        Delta = Delta,
-        A = treatment,
-        W_df = data.frame(df_train[, W_name]),
-        SL.trt = sl_lib_g,
-        SL.ctime = sl_lib_censor,
-        SL.ftime = sl_lib_failure
-      )
-    },
-    error = function(cond) {
-      message("tmle error")
-      NULL
-    }
+    tmle_fit <- fit_survtmle(
+      T.tilde = T_tilde,
+      Delta = Delta,
+      A = treatment,
+      W_df = data.frame(df_train[, W_name]),
+      SL.trt = sl_lib_g,
+      SL.ctime = sl_lib_censor,
+      SL.ftime = sl_lib_failure
+    )
+  },
+  error = function(cond) {
+    message("tmle error")
+    NULL
+  }
   )
   if (is.null(tmle_fit)) {
     tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
@@ -236,7 +215,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_1,
-    # density_censor = sl_fit$density_censor_1,
     density_censor = density_censor_1_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 1,
@@ -252,7 +230,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_0,
-    # density_censor = sl_fit$density_censor_0,
     density_censor = density_censor_0_truncated,
     g1W = sl_fit$g1W,
     A_intervene = 0,
@@ -269,10 +246,8 @@ do_once <- function(df_train, save_plot = FALSE) {
     T_tilde = T_tilde,
     Delta = Delta,
     density_failure = sl_fit$density_failure_1,
-    # density_censor = sl_fit$density_censor_1,
     density_censor = density_censor_1_truncated,
     density_failure_0 = sl_fit$density_failure_0,
-    # density_censor_0 = sl_fit$density_censor_0,
     density_censor_0 = density_censor_0_truncated,
     g1W = sl_fit$g1W,
     k_grid = k_grid
@@ -336,9 +311,9 @@ do_once <- function(df_train, save_plot = FALSE) {
   df_curve0$counterfactual <- "S_{A=0}(t)"
 
   gg_s <- ggplot(
-      data = rbind(df_curve1, df_curve0),
-      aes(x = t, y = s, color = method)
-    ) +
+    data = rbind(df_curve1, df_curve0),
+    aes(x = t, y = s, color = method)
+  ) +
     geom_line() +
     theme_bw() +
     facet_wrap(. ~ counterfactual, ncol = 2) +
@@ -420,9 +395,9 @@ do_once <- function(df_train, save_plot = FALSE) {
   df_ate <- rbind(ate_moss, ate_ee, ate_tmle, ate_ipcw, ate_sl, ate_glm)
 
   gg_ate <- ggplot(
-      data = df_ate,
-      aes(x = t, y = s, color = method)
-    ) +
+    data = df_ate,
+    aes(x = t, y = s, color = method)
+  ) +
     geom_line() +
     geom_line(aes(x = t, y = lower, color = method), lty = 2) +
     geom_line(aes(x = t, y = upper, color = method), lty = 2) +
@@ -442,7 +417,7 @@ do_once <- function(df_train, save_plot = FALSE) {
     common.legend = TRUE,
     legend = "bottom"
   )
-  if (save_plot) ggsave(panel2, filename = 'panel2.png', width = 6, height = 3)
+  if (save_plot) ggsave(panel2, filename = "panel2.png", width = 6, height = 3)
   df_stats <- data.frame(
     is_monotone_tmle1,
     is_monotone_ipcw1,
@@ -453,50 +428,20 @@ do_once <- function(df_train, save_plot = FALSE) {
   )
   return(df_stats)
 }
+
+# ==============================================================================
+# run analysis
+# ==============================================================================
+
+# set the t_max in the analysis, beyond which do not anlayze
+# this is to avoid analyzing parts of the curve with obvious positivity violation
+t_censor <- 8
+# t_censor <- 12
+# t_censor <- 16
+
+# set the truncation level of the propensity scores * censoring probability
+# threshold <- 2e-2
+# threshold <- 1e-2
+threshold <- 1e-5
+# run analysis
 do_once(df_train, save_plot = TRUE)
-
-
-# N_REPEAT <- 1e2
-# # N_REPEAT <- 2
-# # n_subsample <- nrow(df_train)
-# # n_subsample_grid <- c(1e2, 5e2)
-# n_subsample_grid <- c(1e2, 5e2, 1e3)
-
-# library(foreach)
-# library(Rmpi)
-# library(doMPI)
-# cl = startMPIcluster()
-# registerDoMPI(cl)
-# clusterSize(cl) # just to check
-
-# # library(doSNOW)
-# # library(tcltk)
-# # nw <- parallel:::detectCores() # number of workers
-# # cl <- makeSOCKcluster(nw)
-# # registerDoSNOW(cl)
-
-# df_stats_list <- foreach(
-#   n_subsample = n_subsample_grid,
-#   .combine = rbind,
-#   .packages = c("R6", "MOSS", "survtmle", "dplyr"),
-#   .inorder = FALSE,
-#   .errorhandling = "remove",
-#   .verbose = TRUERUE
-# ) %:%
-#   foreach(
-#     i = 1:N_REPEAT, .combine = rbind, .errorhandling = "remove"
-#   ) %dopar% {
-#     df_stats <- do_once(
-#       # sample_n(df_train, size = n_subsample, replace = TRUE)
-#       sample_n(df_train, size = n_subsample, replace = F)
-#     )
-#     df_stats$t_censor <- t_censor
-#     df_stats$n_subsample <- n_subsample
-#     return(df_stats)
-# }
-# df_summary <- df_stats_list %>%
-#   group_by(t_censor, n_subsample) %>%
-#   mutate(cnt = dplyr::n()) %>%
-#   summarise_all(mean)
-# save(df_stats_list, df_summary, file = "df_stats_list.rda")
-

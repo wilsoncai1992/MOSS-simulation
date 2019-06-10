@@ -18,4 +18,4 @@
 module load r/3.5.1
 module load r-packages
 module load openmpi
-mpirun R CMD BATCH --no-save play.R
+mpirun R CMD BATCH --no-save run_simulation.R

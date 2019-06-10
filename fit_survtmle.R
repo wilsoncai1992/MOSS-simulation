@@ -1,4 +1,5 @@
 library(survtmle)
+# helper function to fit iterative TMLE for survival curve
 fit_survtmle <- function(T.tilde, Delta, A, W_df, SL.trt, SL.ctime, SL.ftime) {
   t_0 <- max(T.tilde)
   fit <- survtmle::survtmle(
