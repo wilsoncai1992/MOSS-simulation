@@ -1,4 +1,7 @@
-source("./preprocess.R")
+library(here)
+library(MOSS)
+library(tidyverse)
+library(ggpubr)
 smooth_2d_function <- function(df_prediction, x = "x", y = "y", z = "z", ...) {
   df_smoothed <- df_prediction
   range_y <- range(df_smoothed[, y])
@@ -20,20 +23,19 @@ do_once <- function(df_train, save_plot = FALSE) {
   range(T_tilde)
   k_grid <- 1:max(T_tilde)
 
-  library(MOSS)
   sl_lib_g <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
   sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
   sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth", "SL.ranger")
 
   sl_fit <- MOSS::initial_sl_fit(
-    ftime = T_tilde,
-    ftype = Delta,
-    trt = treatment,
-    adjustVars = data.frame(df_train[, W_name]),
-    t_0 = max(T_tilde),
-    SL.trt = sl_lib_g,
-    SL.ctime = sl_lib_censor,
-    SL.ftime = sl_lib_failure
+    T_tilde = T_tilde,
+    Delta = Delta,
+    A = treatment,
+    W = data.frame(df_train[, W_name]),
+    t_max = max(T_tilde),
+    sl_treatment = sl_lib_g,
+    sl_censoring = sl_lib_censor,
+    sl_failure = sl_lib_failure
   )
   sl_fit$density_failure_1$hazard_to_survival()
   sl_fit$density_failure_0$hazard_to_survival()
@@ -51,14 +53,14 @@ do_once <- function(df_train, save_plot = FALSE) {
   censor_parametric <- c("SL.mean", "SL.glm")
   failure_parametric <- c("SL.mean", "SL.glm")
   parametric_fit <- MOSS::initial_sl_fit(
-    ftime = T_tilde,
-    ftype = Delta,
-    trt = treatment,
-    adjustVars = data.frame(df_train[, W_name]),
-    t_0 = max(T_tilde),
-    SL.trt = g_parametric,
-    SL.ctime = censor_parametric,
-    SL.ftime = failure_parametric
+    T_tilde = T_tilde,
+    Delta = Delta,
+    A = treatment,
+    W = data.frame(df_train[, W_name]),
+    t_max = max(T_tilde),
+    sl_treatment = g_parametric,
+    sl_censoring = censor_parametric,
+    sl_failure = failure_parametric
   )
   parametric_fit$density_failure_1$hazard_to_survival()
   parametric_fit$density_failure_0$hazard_to_survival()
@@ -75,7 +77,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     nrow = 1
   )
 
-  library(ggplot2)
   df_plots <- list()
   for (W_one in W_name) {
     W_plot <- df_train[, W_one]
@@ -111,8 +112,8 @@ do_once <- function(df_train, save_plot = FALSE) {
 
   denom_1 <- sl_fit$density_censor_1$survival * sl_fit$g1W
   denom_0 <- sl_fit$density_censor_0$survival * (1 - sl_fit$g1W)
-  library(stargazer)
 
+  library(stargazer)
   tbl_score <- data.frame(1 / denom_1)
   colnames(tbl_score) <- 1:ncol(tbl_score)
   stargazer(tbl_score)
@@ -179,7 +180,7 @@ do_once <- function(df_train, save_plot = FALSE) {
   ee_fit_0 <- survival_curve$new(t = k_grid, survival = ee_fit_0_all)
 
 
-  source("../fit_survtmle.R")
+  source(here("fit_survtmle.R"))
   message("tmle")
   tmle_fit <- tryCatch({
     tmle_fit <- fit_survtmle(
@@ -406,7 +407,6 @@ do_once <- function(df_train, save_plot = FALSE) {
     theme(legend.position = "bottom") +
     guides(colour = guide_legend(nrow = 1))
 
-  library(ggpubr)
   panel2 <- ggarrange(
     gg_s,
     gg_ate,
@@ -444,4 +444,5 @@ t_censor <- 8
 # threshold <- 1e-2
 threshold <- 1e-5
 # run analysis
+source(here("./code_mgus2/preprocess.R"))
 do_once(df_train, save_plot = TRUE)

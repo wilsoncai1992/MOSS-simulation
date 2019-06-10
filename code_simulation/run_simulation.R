@@ -2,10 +2,11 @@ assertthat::assert_that(packageVersion("MOSS") >= "1.1.2")
 library(survival)
 library(MOSS)
 library(ggpubr)
-library(dplyr)
-source("../fit_survtmle.R")
+library(tidyverse)
+library(here)
+source(here("fit_survtmle.R"))
 # simulate data
-source("./simulate_data.R")
+source(here("./code_simulation/simulate_data.R"))
 
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
@@ -304,24 +305,24 @@ do_once <- function(n_sim = 2e2) {
   return(df_plot)
 }
 
-# N_SIMULATION <- 2
-N_SIMULATION <- 1e3
+N_SIMULATION <- 2
+# N_SIMULATION <- 1e3
 library(foreach)
-library(Rmpi)
-library(doMPI)
-cl <- startMPIcluster()
-registerDoMPI(cl)
-clusterSize(cl) # just to check
+# library(Rmpi)
+# library(doMPI)
+# cl <- startMPIcluster()
+# registerDoMPI(cl)
+# clusterSize(cl) # just to check
 
-# library(doSNOW)
-# library(tcltk)
-# nw <- parallel:::detectCores() # number of workers
-# cl <- makeSOCKcluster(nw)
-# registerDoSNOW(cl)
+library(doSNOW)
+library(tcltk)
+nw <- parallel:::detectCores() # number of workers
+cl <- makeSOCKcluster(nw)
+registerDoSNOW(cl)
 
-# n_sim_grid <- c(1e2)
+n_sim_grid <- c(1e2)
 # n_sim_grid <- c(1e3, 1e2)
-n_sim_grid <- c(1e3, 5e2, 1e2)
+# n_sim_grid <- c(1e3, 5e2, 1e2)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
@@ -364,6 +365,6 @@ df_monotone_summary <- df_monotone %>%
 save(df_metric, df_monotone, df_monotone_summary, file = "df_metric.rda")
 
 # shut down for memory
-closeCluster(cl)
-mpi.quit()
-# stopCluster(cl)
+# closeCluster(cl)
+# mpi.quit()
+stopCluster(cl)
