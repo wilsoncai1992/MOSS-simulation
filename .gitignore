@@ -37,3 +37,5 @@ vignettes/*.pdf
 *.png
 *.pdf
 *.sh
+
+/R-paper/savio_job_1.sh

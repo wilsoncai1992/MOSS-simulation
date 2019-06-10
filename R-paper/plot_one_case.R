@@ -3,14 +3,11 @@ library(MOSS)
 library(ggplot2)
 library(dplyr)
 library(ggpubr)
+library(survtmle)
 source("../fit_survtmle.R")
 # simulate data
-# source('./simulate_data_0.R')
-# source('./simulate_data_1.R')
-source('./simulate_data_2.R')
-# source('./simulate_data_3.R')
-# source('./simulate_data_91.R')
-library(survtmle)
+source("./simulate_data.R")
+
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
@@ -20,17 +17,16 @@ do_once <- function(n_sim = 2e2) {
   sl_lib_censor <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   sl_lib_failure <- c("SL.mean", "SL.glm", "SL.gam", "SL.earth")
   range(df$T.tilde)
-  # df <- df[df$T.tilde > 0, ]
   df$T.tilde <- df$T.tilde + 1
   k_grid <- 1:max(df$T.tilde)
 
   message("KM")
   n_sample <- nrow(df)
   km_fit <- survfit(Surv(time = T.tilde, event = Delta) ~ A, data = df)
-  surv1_km <- tail(km_fit$surv, km_fit$strata['A=1'])
-  time1_km <- tail(km_fit$time, km_fit$strata['A=1'])
-  surv0_km <- tail(km_fit$surv, km_fit$strata['A=0'])
-  time0_km <- tail(km_fit$time, km_fit$strata['A=0'])
+  surv1_km <- tail(km_fit$surv, km_fit$strata["A=1"])
+  time1_km <- tail(km_fit$time, km_fit$strata["A=1"])
+  surv0_km <- tail(km_fit$surv, km_fit$strata["A=0"])
+  time0_km <- tail(km_fit$time, km_fit$strata["A=0"])
   library(zoo)
   impute_KM <- function(time, km) {
     surv1_km_final <- rep(NA, max(df$T.tilde))
@@ -198,22 +194,22 @@ do_once <- function(n_sim = 2e2) {
   # )
   # tmle
   message("tmle")
-  tmle_fit <- tryCatch(
-    {
-      tmle_fit <- fit_survtmle(
-        T.tilde = df$T.tilde,
-        Delta = df$Delta,
-        A = df$A,
-        W_df = data.frame(df[, c("W", "W1")]),
-        SL.trt = sl_lib_g,
-        SL.ctime = sl_lib_censor,
-        SL.ftime = sl_lib_failure
-      )
-    },
-    error = function(cond) {
-      message("tmle error")
-      NULL
-  })
+  tmle_fit <- tryCatch({
+    tmle_fit <- fit_survtmle(
+      T.tilde = df$T.tilde,
+      Delta = df$Delta,
+      A = df$A,
+      W_df = data.frame(df[, c("W", "W1")]),
+      SL.trt = sl_lib_g,
+      SL.ctime = sl_lib_censor,
+      SL.ftime = sl_lib_failure
+    )
+  },
+  error = function(cond) {
+    message("tmle error")
+    NULL
+  }
+  )
   if (is.null(tmle_fit)) {
     tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
     tmle_fit_0 <- sl_density_failure_0_marginal$clone(deep = TRUE)
@@ -249,48 +245,41 @@ do_once <- function(n_sim = 2e2) {
   )
   # if (!is_monotone_tmle & !is_monotone_ipcw & !is_monotone_ee) {
   if (!is_monotone_tmle & !is_monotone_ee) {
-  # if (!is_monotone_tmle) {
+    # if (!is_monotone_tmle) {
     return(df_curve)
   } else {
     return(NULL)
   }
 }
 
-N_SIMULATION = 2e1
-# N_SIMULATION = 8
+N_SIMULATION <- 2e1
 library(foreach)
-# library(Rmpi)
-# library(doMPI)
-# cl = startMPIcluster()
-# registerDoMPI(cl)
-# clusterSize(cl) # just to check
 
 library(doSNOW)
 library(tcltk)
-nw <- parallel:::detectCores()  # number of workers
+nw <- parallel:::detectCores()
 cl <- makeSOCKcluster(nw)
 registerDoSNOW(cl)
 
-# n_sim_grid <- c(1e2)
+n_sim_grid <- c(1e2)
 # n_sim_grid <- c(1e3)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
-  .packages = c('R6', 'MOSS', 'survtmle', 'survival'),
+  .packages = c("R6", "MOSS", "survtmle", "survival"),
   .inorder = FALSE,
-  .errorhandling = 'remove',
+  .errorhandling = "remove",
   .verbose = TRUE
 ) %:%
-  foreach(it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = 'remove') %dopar% {
-  df <- do_once(n_sim = n_sim)
-  if (!is.null(df)) {
-    df$id_mcmc <- it2
-    # df$n <- n_sim
-    return(df)
-  } else {
-    return(NULL)
+  foreach(it2 = 1:N_SIMULATION, .combine = rbind, .errorhandling = "remove") %dopar% {
+    df <- do_once(n_sim = n_sim)
+    if (!is.null(df)) {
+      df$id_mcmc <- it2
+      return(df)
+    } else {
+      return(NULL)
+    }
   }
-}
 unique(df_metric$id_mcmc)
 gglist <- list()
 for (idx in unique(df_metric$id_mcmc)) {
@@ -300,8 +289,8 @@ for (idx in unique(df_metric$id_mcmc)) {
     theme(legend.position = "bottom")
   gglist <- c(gglist, list(gg))
 }
-gg_panel <- ggarrange(plotlist = gglist, legend = 'bottom')
-ggpubr::ggexport(plotlist = gglist, filename = 'panel.pdf', width = 4, height = 4)
+gg_panel <- ggarrange(plotlist = gglist, legend = "bottom")
+ggpubr::ggexport(plotlist = gglist, filename = "panel.pdf", width = 4, height = 4)
 
 # shut down for memory
 # closeCluster(cl)

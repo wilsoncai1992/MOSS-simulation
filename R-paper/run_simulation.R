@@ -5,11 +5,8 @@ library(ggpubr)
 library(dplyr)
 source("../fit_survtmle.R")
 # simulate data
-# source("./simulate_data_0.R")
-# source("./simulate_data_1.R")
-source("./simulate_data_2.R")
-# source("./simulate_data_3.R")
-# source("./simulate_data_91.R")
+source("./simulate_data.R")
+
 do_once <- function(n_sim = 2e2) {
   simulated <- simulate_data(n_sim = n_sim)
   df <- simulated$dat
@@ -160,10 +157,10 @@ do_once <- function(n_sim = 2e2) {
       SL.ftime = sl_lib_failure
     )
   },
-    error = function(cond) {
-      message("tmle error")
-      NULL
-    }
+  error = function(cond) {
+    message("tmle error")
+    NULL
+  }
   )
   if (is.null(tmle_fit)) {
     tmle_fit_1 <- sl_density_failure_1_marginal$clone(deep = TRUE)
@@ -191,12 +188,12 @@ do_once <- function(n_sim = 2e2) {
   )
   moss_hazard_l1 <- moss_hazard_l2$clone(deep = TRUE)
   psi_moss_l2_1 <- moss_hazard_l2$iterate_onestep(
-    method = "l2", epsilon = 1e-2, verbose = FALSE
+    method = "l2", epsilon = 1e-1 / sqrt(n_sim), verbose = FALSE
   )
   moss_hazard_l2_1 <- survival_curve$new(t = k_grid, survival = psi_moss_l2_1)
 
   psi_moss_hazard_l1_1 <- moss_hazard_l1$iterate_onestep(
-    method = "l1", epsilon = 1e-2, verbose = FALSE
+    method = "l1", epsilon = 1e-1 / sqrt(n_sim), verbose = FALSE
   )
   moss_hazard_l1_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_l1_1)
 
@@ -301,16 +298,18 @@ do_once <- function(n_sim = 2e2) {
   # track if the estimators are monotone
   df_plot$is_monotone_tmle1 <- all(diff(as.numeric(tmle_fit_1$survival)) <= 0)
   df_plot$is_monotone_ee1 <- all(diff(as.numeric(ee_fit_1$survival)) <= 0)
+  df_plot$is_monotone_tmle0 <- all(diff(as.numeric(tmle_fit_0$survival)) <= 0)
+  df_plot$is_monotone_ee0 <- all(diff(as.numeric(ee_fit_0$survival)) <= 0)
   df_plot$is_tmle1_converge <- is_tmle1_converge
   return(df_plot)
 }
 
-# N_SIMULATION = 2
+# N_SIMULATION <- 2
 N_SIMULATION <- 1e3
 library(foreach)
 library(Rmpi)
 library(doMPI)
-cl = startMPIcluster()
+cl <- startMPIcluster()
 registerDoMPI(cl)
 clusterSize(cl) # just to check
 
@@ -321,13 +320,13 @@ clusterSize(cl) # just to check
 # registerDoSNOW(cl)
 
 # n_sim_grid <- c(1e2)
-n_sim_grid <- c(1e2, 1e3)
+# n_sim_grid <- c(1e3, 1e2)
+n_sim_grid <- c(1e3, 5e2, 1e2)
 df_metric <- foreach(
   n_sim = n_sim_grid,
   .combine = rbind,
   .packages = c("R6", "MOSS", "survtmle", "survival"),
   .inorder = FALSE,
-  .errorhandling = "remove",
   .verbose = TRUE
 ) %:%
   foreach(
@@ -341,7 +340,15 @@ df_metric <- foreach(
 table(df_metric$id_mcmc)
 
 df_monotone <- df_metric %>%
-  select(n, id_mcmc, is_monotone_tmle1, is_monotone_ee1, is_tmle1_converge)
+  select(
+    n,
+    id_mcmc,
+    is_monotone_tmle1,
+    is_monotone_ee1,
+    is_monotone_tmle0,
+    is_monotone_ee0,
+    is_tmle1_converge
+  )
 df_monotone <- df_monotone[!duplicated(df_monotone), ]
 df_monotone_summary <- df_monotone %>%
   group_by(n) %>%
@@ -349,6 +356,8 @@ df_monotone_summary <- df_monotone %>%
     cnt = dplyr::n(),
     is_monotone_tmle1 = sum(is_monotone_tmle1 * is_tmle1_converge) / sum(is_tmle1_converge),
     is_monotone_ee1 = mean(is_monotone_ee1),
+    is_monotone_tmle0 = sum(is_monotone_tmle0 * is_tmle1_converge) / sum(is_tmle1_converge),
+    is_monotone_ee0 = mean(is_monotone_ee0),
     is_tmle1_converge = mean(is_tmle1_converge)
   )
 
@@ -358,4 +367,3 @@ save(df_metric, df_monotone, df_monotone_summary, file = "df_metric.rda")
 closeCluster(cl)
 mpi.quit()
 # stopCluster(cl)
-
