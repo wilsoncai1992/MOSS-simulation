@@ -1,6 +1,4 @@
-# Simulation of Cai W, van der Laan MJ (2019+). One-step TMLE for time-to-event
-outcomes.
-
+# Simulation of Cai W, van der Laan MJ (2019+). *One-step TMLE for time-to-event outcomes.*
 
 
 ## Pre-requisites
@@ -10,7 +8,6 @@ outcomes.
 devtools::install_github("wilsoncai1992/MOSS")
 install.packages("survtmle")
 ```
-
 
 
 ## Instructions
