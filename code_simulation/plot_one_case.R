@@ -1,9 +1,9 @@
 library(survival)
 library(MOSS)
-library(ggplot2)
-library(dplyr)
-library(ggpubr)
 library(survtmle)
+library(tidyverse)
+library(ggplot2)
+library(ggpubr)
 source("../fit_survtmle.R")
 # simulate data
 source("./simulate_data.R")
@@ -41,15 +41,16 @@ do_once <- function(n_sim = 2e2) {
   km_fit_0 <- survival_curve$new(t = k_grid, survival = surv0_km_final)
 
   message("SL")
+  W_names <- c("W", "W1")
   sl_fit <- initial_sl_fit(
-    ftime = df$T.tilde,
-    ftype = df$Delta,
-    trt = df$A,
-    adjustVars = data.frame(df[, c("W", "W1")]),
-    t_0 = max(df$T.tilde),
-    SL.trt = sl_lib_g,
-    SL.ctime = sl_lib_censor,
-    SL.ftime = sl_lib_failure
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    A = df$A,
+    W = data.frame(df[, W_names]),
+    t_max = max(df$T.tilde),
+    sl_treatment = sl_lib_g,
+    sl_censoring = sl_lib_censor,
+    sl_failure = sl_lib_failure
   )
   sl_fit$density_failure_1$hazard_to_survival()
   sl_fit$density_failure_0$hazard_to_survival()
@@ -139,7 +140,7 @@ do_once <- function(n_sim = 2e2) {
   #   common.legend = TRUE,
   #   legend = "bottom"
   # )
-  message("moss")
+  message("moss classic")
   moss_fit <- MOSS$new(
     A = df$A,
     T_tilde = df$T.tilde,
@@ -152,7 +153,6 @@ do_once <- function(n_sim = 2e2) {
   )
   psi_moss_1 <- moss_fit$onestep_curve(
     epsilon = 1e-3,
-    # epsilon = 1e-5,
     max_num_interation = 1e2,
     verbose = TRUE
   )
@@ -168,30 +168,37 @@ do_once <- function(n_sim = 2e2) {
   )
   psi_moss_0 <- moss_fit$onestep_curve(
     epsilon = 1e-3,
-    # epsilon = 1e-5,
     max_num_interation = 1e2,
     verbose = TRUE
   )
   moss_fit_1 <- survival_curve$new(t = k_grid, survival = psi_moss_1)
   moss_fit_0 <- survival_curve$new(t = k_grid, survival = psi_moss_0)
-  # gg_moss <- ggarrange(
-  #   moss_fit_1$display(type = "survival"),
-  #   moss_fit_0$display(type = "survival"),
-  #   ncol = 2,
-  #   labels = "AUTO",
-  #   common.legend = TRUE,
-  #   legend = "bottom"
-  # )
-  # ggarrange(
-  #   gg_sl,
-  #   gg_sl2,
-  #   gg_ipcw,
-  #   gg_ee,
-  #   gg_moss,
-  #   nrow = 5,
-  #   common.legend = TRUE,
-  #   legend = "bottom"
-  # )
+
+  message("moss with l2 submodel")
+  moss_hazard_l2 <- MOSS_hazard$new(
+    A = df$A,
+    T_tilde = df$T.tilde,
+    Delta = df$Delta,
+    density_failure = sl_fit$density_failure_1,
+    density_censor = sl_fit$density_censor_1,
+    g1W = sl_fit$g1W,
+    A_intervene = 1,
+    k_grid = k_grid
+  )
+  moss_hazard_l1 <- moss_hazard_l2$clone(deep = TRUE)
+  psi_moss_l2_1 <- moss_hazard_l2$iterate_onestep(
+    method = "l2", epsilon = 1e-1 / sqrt(n_sim), verbose = FALSE
+  )
+  moss_hazard_l2_1 <- survival_curve$new(t = k_grid, survival = psi_moss_l2_1)
+
+  psi_moss_hazard_l1_1 <- moss_hazard_l1$iterate_onestep(
+    method = "l1", epsilon = 1e-1 / sqrt(n_sim), verbose = FALSE
+  )
+  moss_hazard_l1_1 <- survival_curve$new(t = k_grid, survival = psi_moss_hazard_l1_1)
+
+  moss_hazard_l2_1
+  moss_hazard_l1_1
+
   # tmle
   message("tmle")
   tmle_fit <- tryCatch({
@@ -226,12 +233,17 @@ do_once <- function(n_sim = 2e2) {
   df_curve_sl1 <- sl_density_failure_1_marginal$create_ggplot_df()
   df_curve_tmle1 <- tmle_fit_1$create_ggplot_df()
   df_curve_moss1 <- moss_fit_1$create_ggplot_df()
+
+  df_curve_moss_l11 <- moss_hazard_l1_1$create_ggplot_df()
+  df_curve_moss_l21 <- moss_hazard_l2_1$create_ggplot_df()
   df_curve_km1 <- km_fit_1$create_ggplot_df()
   df_curve_ipcw1 <- ipcw_fit_1$create_ggplot_df()
   df_curve_ee1 <- ee_fit_1$create_ggplot_df()
   df_curve_sl1$method <- "super learner"
   df_curve_tmle1$method <- "TMLE"
-  df_curve_moss1$method <- "MOSS"
+  df_curve_moss1$method <- "MOSS_classic"
+  df_curve_moss_l11$method <- "MOSS_l1"
+  df_curve_moss_l21$method <- "MOSS_l2"
   df_curve_km1$method <- "KM"
   df_curve_ipcw1$method <- "IPCW"
   df_curve_ee1$method <- "EE"
@@ -239,20 +251,20 @@ do_once <- function(n_sim = 2e2) {
     df_curve_sl1,
     df_curve_tmle1,
     df_curve_moss1,
+    df_curve_moss_l11,
+    df_curve_moss_l21,
     df_curve_km1,
     df_curve_ipcw1,
     df_curve_ee1
   )
-  # if (!is_monotone_tmle & !is_monotone_ipcw & !is_monotone_ee) {
   if (!is_monotone_tmle & !is_monotone_ee) {
-    # if (!is_monotone_tmle) {
     return(df_curve)
   } else {
     return(NULL)
   }
 }
 
-N_SIMULATION <- 2e1
+N_SIMULATION <- 5e1
 library(foreach)
 
 library(doSNOW)
@@ -282,9 +294,27 @@ df_metric <- foreach(
   }
 unique(df_metric$id_mcmc)
 gglist <- list()
+
+df_metric <- df_metric %>%
+  filter(method != "MOSS_classic") %>%
+  mutate(method = recode(
+    method,
+    TMLE = "iter. TMLE",
+    MOSS_l1 = "OS TMLE (lasso)",
+    MOSS_l2 = "OS TMLE (ridge)",
+    "super learner" = "Super learner",
+  )) %>% mutate(method = factor(
+    method,
+    levels = c("KM", "Super learner", "IPCW", "EE", "iter. TMLE", "OS TMLE (ridge)", "OS TMLE (lasso)"))
+  )
+
+
 for (idx in unique(df_metric$id_mcmc)) {
   gg <- ggplot(df_metric %>% filter(id_mcmc == idx), aes(t, s, color = method)) +
     geom_line() +
+    ylab("Survival probability") +
+    labs(color = "Method") +
+    guides(color = guide_legend(nrow = 4)) +
     theme_bw() +
     theme(legend.position = "bottom")
   gglist <- c(gglist, list(gg))
